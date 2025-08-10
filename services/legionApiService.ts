@@ -356,60 +356,37 @@ class LegionApiService {
   }
 
   async processMessageTurn(params: HandleUserMessageParams): Promise<void> {
-    const { channelId, triggeringMessage: userMessage, onMinionResponse, onMinionResponseChunk, onMinionProcessingUpdate, onSystemMessage, onRegulatorReport } = params;
+    const { channelId, triggeringMessage: userMessage, ...callbacks } = params;
+    
     if (!this.messages[channelId]) this.messages[channelId] = [];
     this.messages[channelId].push(userMessage);
+    
     const channel = this.channels.find(c => c.id === channelId);
-    if(channel) channel.messageCounter = (channel.messageCounter || 0) + 1;
+    if (!channel) return;
+    
+    channel.messageCounter = (channel.messageCounter || 0) + 1;
 
-    const activeChannel = this.channels.find(c => c.id === channelId);
-    if (!activeChannel) return;
+    const minionsInChannel = this.minionConfigs.filter(minion => 
+      channel.members.includes(minion.name) && minion.role === 'standard'
+    );
 
-    const minionsInChannel = this.minionConfigs.filter(minion => activeChannel.members.includes(minion.name) && minion.role === 'standard');
     if (minionsInChannel.length === 0 && userMessage.senderType === MessageSender.User) {
-       await this._checkForRegulatorAction(activeChannel, onRegulatorReport, onSystemMessage);
+       await this._checkForRegulatorAction(channel, callbacks.onRegulatorReport, callbacks.onSystemMessage);
        this.saveState();
        return;
     }
     
-    let dynamicChatHistory = formatChatHistoryForLLM(this.messages[channelId], channelId);
-    const perceptionPromises = minionsInChannel.map(minion => this._getPerceptionPlan(minion, dynamicChatHistory, userMessage.senderName, activeChannel.type));
+    const initialChatHistory = formatChatHistoryForLLM(this.messages[channelId], channelId);
     
-    const perceptionResults = await Promise.all(perceptionPromises);
-    const minionsWhoWillAct = perceptionResults.filter((r): r is {minion: MinionConfig, plan: PerceptionPlan, error: undefined} => !!r.plan && (r.plan.action === 'SPEAK' || r.plan.action === 'USE_TOOL'));
-    
-    for (const { minion, plan, error } of perceptionResults) {
-        if (error) { onSystemMessage({ id: `sys-err-${minion.id}-${Date.now()}`, channelId, senderType: MessageSender.System, senderName: 'System', content: `Error for ${minion.name}: ${error}`, timestamp: Date.now(), isError: true }); continue; }
-        if (plan) this.updateMinionState(minion.id, plan);
-    }
-    
-    minionsWhoWillAct.forEach(({minion}) => onMinionProcessingUpdate(minion.name, true));
-    minionsWhoWillAct.sort((a, b) => a.plan.predictedResponseTime - b.plan.predictedResponseTime);
+    await this._runAgentLoop({
+      channel,
+      minionsInChannel,
+      initialChatHistory,
+      lastSenderName: userMessage.senderName,
+      ...callbacks
+    });
 
-    for (const { minion, plan } of minionsWhoWillAct) {
-        let toolOutput: string | undefined = undefined;
-
-        if (plan.action === 'USE_TOOL' && plan.toolCall) {
-            toolOutput = await this._executeMcpTool(channelId, minion.name, plan.toolCall, onSystemMessage);
-            dynamicChatHistory += `\n[TOOL CALL] Minion ${minion.name} is using tool: ${plan.toolCall.name}(${JSON.stringify(plan.toolCall.arguments)})`
-            dynamicChatHistory += `\n[TOOL OUTPUT] ${toolOutput}`;
-        }
-
-        const tempMessageId = `ai-${minion.id}-${Date.now()}`;
-        onMinionResponse({ id: tempMessageId, channelId, senderType: MessageSender.AI, senderName: minion.name, content: "", timestamp: Date.now(), isProcessing: true, senderRole: 'standard' });
-        const responseGenPrompt = RESPONSE_GENERATION_PROMPT_TEMPLATE(minion.name, minion.system_prompt_persona, dynamicChatHistory, plan, toolOutput);
-        const keyInfo = this._selectApiKey(minion);
-        await this.runStreamingResponse(channelId, tempMessageId, minion, plan, responseGenPrompt, keyInfo, onMinionResponse, onMinionResponseChunk, onSystemMessage);
-        
-        const finalMessage = (this.messages[channelId] || []).find(m => m.id === tempMessageId);
-        if (finalMessage) {
-          dynamicChatHistory += `\n[MINION ${minion.name}]: ${finalMessage.content}`;
-          if(channel) channel.messageCounter = (channel.messageCounter || 0) + 1;
-        }
-        onMinionProcessingUpdate(minion.name, false);
-    }
-
-    await this._checkForRegulatorAction(activeChannel, onRegulatorReport, onSystemMessage);
+    await this._checkForRegulatorAction(channel, callbacks.onRegulatorReport, callbacks.onSystemMessage);
     this.saveState();
   }
 
@@ -455,49 +432,129 @@ class LegionApiService {
     }
   }
 
-  async triggerNextAutoChatTurn(channelId: string, onMinionResponse: (m: ChatMessageData) => void, onMinionResponseChunk: (cid: string, mid: string, c: string) => void, onMinionProcessingUpdate: (n: string, p: boolean) => void, onSystemMessage: (m: ChatMessageData) => void, onRegulatorReport: (m: ChatMessageData) => void): Promise<void> {
+  async triggerNextAutoChatTurn(channelId: string, ...callbacks: [ (m: ChatMessageData) => void, (cid: string, mid: string, c: string) => void, (n: string, p: boolean) => void, (m: ChatMessageData) => void, (m: ChatMessageData) => void ]): Promise<void> {
+    const [onMinionResponse, onMinionResponseChunk, onMinionProcessingUpdate, onSystemMessage, onRegulatorReport] = callbacks;
+    
     const channel = this.channels.find(c => c.id === channelId);
     if (!channel || !channel.isAutoModeActive) return;
+
     const minionsInChannel = this.minionConfigs.filter(m => channel.members.includes(m.name) && m.role === 'standard');
-    if (minionsInChannel.length < 1) { onSystemMessage({ id: `sys-auto-err-${Date.now()}`, channelId, senderType: MessageSender.System, senderName: 'System', content: `Auto-mode paused. Requires at least 1 standard minion in the channel.`, timestamp: Date.now(), isError: true }); return; }
+    if (minionsInChannel.length < 1) {
+      onSystemMessage({ id: `sys-auto-err-${Date.now()}`, channelId, senderType: MessageSender.System, senderName: 'System', content: `Auto-mode paused. Requires at least 1 standard minion in the channel.`, timestamp: Date.now(), isError: true });
+      return;
+    }
     
     const currentMessages = this.messages[channelId] || [];
-    let dynamicChatHistory = formatChatHistoryForLLM(currentMessages, channelId);
     const lastMessage = currentMessages[currentMessages.length - 1];
-    if (!lastMessage) { await this._checkForRegulatorAction(channel, onRegulatorReport, onSystemMessage); this.saveState(); return; };
-
-    const perceptionPromises = minionsInChannel.map(minion => {
-      if (minion.name === lastMessage.senderName && minionsInChannel.length > 1) return Promise.resolve({ minion, plan: null, error: "Cannot respond to self." });
-      return this._getPerceptionPlan(minion, dynamicChatHistory, lastMessage.senderName, channel.type);
-    });
-
-    const results = await Promise.all(perceptionPromises);
-    const actors = results.filter((r): r is { minion: MinionConfig; plan: PerceptionPlan; error: undefined } => !!r.plan && (r.plan.action === 'SPEAK' || r.plan.action === 'USE_TOOL')).sort((a, b) => a.plan.predictedResponseTime - b.plan.predictedResponseTime);
-    
-    const nextActor = actors[0];
-    if (!nextActor) { await this._checkForRegulatorAction(channel, onRegulatorReport, onSystemMessage); this.saveState(); return; }
-
-    const { minion, plan } = nextActor;
-    onMinionProcessingUpdate(minion.name, true);
-
-    let toolOutput: string | undefined = undefined;
-    if (plan.action === 'USE_TOOL' && plan.toolCall) {
-        toolOutput = await this._executeMcpTool(channelId, minion.name, plan.toolCall, onSystemMessage);
-        dynamicChatHistory += `\n[TOOL CALL] Minion ${minion.name} is using tool: ${plan.toolCall.name}(${JSON.stringify(plan.toolCall.arguments)})`
-        dynamicChatHistory += `\n[TOOL OUTPUT] ${toolOutput}`;
+    if (!lastMessage) {
+      await this._checkForRegulatorAction(channel, onRegulatorReport, onSystemMessage);
+      this.saveState();
+      return;
     }
 
-    const tempMessageId = `ai-${minion.id}-${Date.now()}`;
-    onMinionResponse({ id: tempMessageId, channelId, senderType: MessageSender.AI, senderName: minion.name, content: '', timestamp: Date.now(), isProcessing: true, senderRole: 'standard' });
-    const responsePrompt = RESPONSE_GENERATION_PROMPT_TEMPLATE(minion.name, minion.system_prompt_persona, dynamicChatHistory, plan, toolOutput);
-    await this.runStreamingResponse(channelId, tempMessageId, minion, plan, responsePrompt, this._selectApiKey(minion), onMinionResponse, onMinionResponseChunk, onSystemMessage);
+    const initialChatHistory = formatChatHistoryForLLM(currentMessages, channelId);
     
-    const finalMessage = (this.messages[channelId] || []).find(m => m.id === tempMessageId);
-    if(finalMessage) channel.messageCounter = (channel.messageCounter || 0) + 1;
-    onMinionProcessingUpdate(minion.name, false);
+    await this._runAgentLoop({
+      channel,
+      minionsInChannel,
+      initialChatHistory,
+      lastSenderName: lastMessage.senderName,
+      isAutoChat: true,
+      onMinionResponse,
+      onMinionResponseChunk,
+      onMinionProcessingUpdate,
+      onSystemMessage,
+      onRegulatorReport
+    });
 
     await this._checkForRegulatorAction(channel, onRegulatorReport, onSystemMessage);
     this.saveState();
+  }
+
+  private async _runAgentLoop(params: {
+    channel: Channel;
+    minionsInChannel: MinionConfig[];
+    initialChatHistory: string;
+    lastSenderName: string;
+    isAutoChat?: boolean;
+    onMinionResponse: (message: ChatMessageData) => void;
+    onMinionResponseChunk: (channelId: string, messageId: string, chunk: string) => void;
+    onMinionProcessingUpdate: (minionName: string, isProcessing: boolean) => void;
+    onSystemMessage: (systemMessage: ChatMessageData) => void;
+    onRegulatorReport: (reportMsg: ChatMessageData) => void; // This was missing
+  }): Promise<void> {
+    const { channel, minionsInChannel, initialChatHistory, lastSenderName, isAutoChat = false, onMinionResponse, onMinionResponseChunk, onMinionProcessingUpdate, onSystemMessage, onRegulatorReport } = params;
+    const channelId = channel.id;
+    let dynamicChatHistory = initialChatHistory;
+    const MAX_TURNS = 5; // Safety break for tool use loops
+
+    for (let turn = 0; turn < MAX_TURNS; turn++) {
+      const perceptionPromises = minionsInChannel.map(minion => {
+        if (isAutoChat && minion.name === lastSenderName && minionsInChannel.length > 1) {
+          return Promise.resolve({ minion, plan: null, error: "Cannot respond to self in auto-chat." });
+        }
+        return this._getPerceptionPlan(minion, dynamicChatHistory, lastSenderName, channel.type);
+      });
+
+      const perceptionResults = await Promise.all(perceptionPromises);
+      
+      for (const { minion, plan, error } of perceptionResults) {
+        if (error) { onSystemMessage({ id: `sys-err-${minion.id}-${Date.now()}`, channelId, senderType: MessageSender.System, senderName: 'System', content: `Error for ${minion.name}: ${error}`, timestamp: Date.now(), isError: true }); }
+        if (plan) { this.updateMinionState(minion.id, plan); }
+      }
+
+      const actors = perceptionResults
+        .filter((r): r is { minion: MinionConfig; plan: PerceptionPlan; error: undefined } => !!r.plan && (r.plan.action === 'SPEAK' || r.plan.action === 'USE_TOOL'))
+        .sort((a, b) => a.plan.predictedResponseTime - b.plan.predictedResponseTime);
+
+      if (actors.length === 0) {
+        onSystemMessage({ id: `sys-no-action-${Date.now()}`, channelId, senderType: MessageSender.System, senderName: 'System', content: 'No minions chose to act.', timestamp: Date.now() });
+        return; // End of the line, no one is acting.
+      }
+
+      // In user-triggered turns, all actors can respond. In auto-chat, only the first one does.
+      const actorsToProcess = isAutoChat ? actors.slice(0, 1) : actors;
+      let aToolWasUsedThisTurn = false;
+      
+      for (const { minion, plan } of actorsToProcess) {
+        onMinionProcessingUpdate(minion.name, true);
+
+        if (plan.action === 'USE_TOOL' && plan.toolCall) {
+          aToolWasUsedThisTurn = true;
+          const toolOutput = await this._executeMcpTool(channelId, minion.name, plan.toolCall, onSystemMessage);
+          dynamicChatHistory += `\n[TOOL CALL] Minion ${minion.name} used tool: ${plan.toolCall.name}(${JSON.stringify(plan.toolCall.arguments)})`;
+          dynamicChatHistory += `\n[TOOL OUTPUT] ${toolOutput}`;
+          dynamicChatHistory += `\n[SYSTEM REMINDER]: You have just received the output from your tool call. Analyze this output and the conversation history to decide your next action. If the task is not yet complete, prioritize using another tool. Only choose to 'SPEAK' when you have all the information needed to provide a final answer.`;
+          onMinionProcessingUpdate(minion.name, false); // Tool use is quick
+        }
+        
+        if (plan.action === 'SPEAK') {
+          const tempMessageId = `ai-${minion.id}-${Date.now()}`;
+          onMinionResponse({ id: tempMessageId, channelId, senderType: MessageSender.AI, senderName: minion.name, content: "", timestamp: Date.now(), isProcessing: true, senderRole: 'standard' });
+          const responseGenPrompt = RESPONSE_GENERATION_PROMPT_TEMPLATE(minion.name, minion.system_prompt_persona, dynamicChatHistory, plan, undefined);
+          const keyInfo = this._selectApiKey(minion);
+          await this.runStreamingResponse(channelId, tempMessageId, minion, plan, responseGenPrompt, keyInfo, onMinionResponse, onMinionResponseChunk, onSystemMessage);
+          
+          const finalMessage = (this.messages[channelId] || []).find(m => m.id === tempMessageId);
+          if (finalMessage) {
+            dynamicChatHistory += `\n[MINION ${minion.name}]: ${finalMessage.content}`;
+            if(channel) channel.messageCounter = (channel.messageCounter || 0) + 1;
+          }
+          onMinionProcessingUpdate(minion.name, false);
+          // If this is an auto-chat turn, we break after the first speaker.
+          if (isAutoChat) return; 
+        }
+      }
+
+      // After processing all actors for this iteration, decide whether to continue the loop.
+      if (aToolWasUsedThisTurn) {
+        // If a tool was used, we must loop again to get the next action plan.
+        continue;
+      } else {
+        // If no tools were used, it means everyone who was going to act has spoken. The turn is over.
+        return;
+      }
+    }
   }
   
   private async runStreamingResponse(channelId: string, messageId: string, minion: MinionConfig, plan: PerceptionPlan, prompt: string, keyInfo: SelectedKeyInfo, onMinionResponse: (m: ChatMessageData) => void, onMinionResponseChunk: (cid: string, mid: string, c: string) => void, onSystemMessage: (m: ChatMessageData) => void): Promise<void> {
