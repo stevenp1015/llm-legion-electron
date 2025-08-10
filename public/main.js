@@ -1,0 +1,206 @@
+import { app, BrowserWindow, Menu, shell, dialog } from 'electron';
+import { fileURLToPath } from 'url';
+import path from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Keep a global reference of the window object
+let mainWindow;
+
+const isDev = process.env.NODE_ENV === 'development';
+
+async function createWindow() {
+  // Create the browser window
+  mainWindow = new BrowserWindow({
+    width: 1400,
+    height: 900,
+    minWidth: 800,
+    minHeight: 600,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      enableRemoteModule: false,
+      preload: path.join(__dirname, 'preload.js'),
+      webSecurity: !isDev // Disable web security in dev for CORS
+    },
+    titleBarStyle: 'default',
+    show: false, // Don't show until ready
+    icon: path.join(__dirname, '../assets/icon.png') // Add your app icon here
+  });
+
+  // Load the app
+  if (isDev) {
+    // Try common Vite ports
+    const devPorts = [5173, 5174, 5175, 3000];
+    let loaded = false;
+    
+    for (const port of devPorts) {
+      try {
+        await mainWindow.loadURL(`http://localhost:${port}`);
+        console.log(`Loaded dev server on port ${port}`);
+        loaded = true;
+        break;
+      } catch (error) {
+        console.log(`Port ${port} not available, trying next...`);
+      }
+    }
+    
+    if (!loaded) {
+      console.error('Could not connect to dev server on any common ports');
+      mainWindow.loadURL('http://localhost:5173'); // Fallback
+    }
+    
+    mainWindow.webContents.openDevTools();
+  } else {
+    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+  }
+
+  // Show window when ready to prevent visual flash
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show();
+  });
+
+  // Handle window closed
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+  });
+
+  // Handle external links
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url);
+    return { action: 'deny' };
+  });
+
+  // Prevent navigation to external URLs
+  mainWindow.webContents.on('will-navigate', (event, navigationUrl) => {
+    const parsedUrl = new URL(navigationUrl);
+    
+    if (parsedUrl.origin !== 'http://localhost:5173' && parsedUrl.origin !== 'file://') {
+      event.preventDefault();
+      shell.openExternal(navigationUrl);
+    }
+  });
+}
+
+// Create application menu
+function createMenu() {
+  const template = [
+    {
+      label: 'File',
+      submenu: [
+        {
+          label: 'Quit',
+          accelerator: process.platform === 'darwin' ? 'Cmd+Q' : 'Ctrl+Q',
+          click: () => {
+            app.quit();
+          }
+        }
+      ]
+    },
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'selectall' }
+      ]
+    },
+    {
+      label: 'View',
+      submenu: [
+        { role: 'reload' },
+        { role: 'forceReload' },
+        { role: 'toggleDevTools' },
+        { type: 'separator' },
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' }
+      ]
+    },
+    {
+      label: 'Window',
+      submenu: [
+        { role: 'minimize' },
+        { role: 'close' }
+      ]
+    }
+  ];
+
+  // macOS specific menu adjustments
+  if (process.platform === 'darwin') {
+    template.unshift({
+      label: app.getName(),
+      submenu: [
+        { role: 'about' },
+        { type: 'separator' },
+        { role: 'services' },
+        { type: 'separator' },
+        { role: 'hide' },
+        { role: 'hideOthers' },
+        { role: 'unhide' },
+        { type: 'separator' },
+        { role: 'quit' }
+      ]
+    });
+
+    // Window menu
+    template[4].submenu = [
+      { role: 'close' },
+      { role: 'minimize' },
+      { role: 'zoom' },
+      { type: 'separator' },
+      { role: 'front' }
+    ];
+  }
+
+  const menu = Menu.buildFromTemplate(template);
+  Menu.setApplicationMenu(menu);
+}
+
+// App event listeners
+app.whenReady().then(() => {
+  createWindow();
+  createMenu();
+
+  app.on('activate', () => {
+    // On macOS, re-create window when dock icon is clicked
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow();
+    }
+  });
+});
+
+// Quit when all windows are closed
+app.on('window-all-closed', () => {
+  // On macOS, keep app running even when all windows are closed
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
+});
+
+// Security: Prevent new window creation
+app.on('web-contents-created', (event, contents) => {
+  contents.on('new-window', (event, navigationUrl) => {
+    event.preventDefault();
+    shell.openExternal(navigationUrl);
+  });
+});
+
+// Handle certificate errors in development
+app.on('certificate-error', (event, webContents, url, error, certificate, callback) => {
+  if (isDev) {
+    // Ignore certificate errors in development
+    event.preventDefault();
+    callback(true);
+  } else {
+    // Use default behavior in production
+    callback(false);
+  }
+});

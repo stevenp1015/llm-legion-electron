@@ -1,0 +1,6 @@
+fastapi
+uvicorn[standard]
+google-agent-development-kit
+python-dotenv
+google-generativeai # Required by ADK or for direct Gemini calls if needed
+httpx # For making HTTP requests if Minions need to call external APIs
