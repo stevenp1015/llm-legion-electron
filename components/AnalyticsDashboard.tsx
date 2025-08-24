@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { MinionConfig, ModelQuotas, UsageStat } from '../types';
-import { XMarkIcon } from './Icons';
+import { XMarkIcon, ArrowPathIcon } from './Icons';
 import legionApiService from '../services/legionApiService';
 import MinionIcon from './MinionIcon';
 
@@ -72,28 +72,32 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ isOpen, onClose
         return d.toISOString().split('T')[0];
     });
     const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
+    const [isLoading, setIsLoading] = useState(false);
+
+    const fetchData = useCallback(async () => {
+        if (!isOpen) return;
+        setIsLoading(true);
+        const start = new Date(startDate).getTime();
+        const end = new Date(endDate).getTime() + (24 * 60 * 60 * 1000 - 1); // include the whole end day
+
+        const data = await Promise.all(minionConfigs.map(async (minion) => {
+            const stats = await legionApiService.getAnalyticsData(minion.id, start, end);
+            return {
+                id: minion.id,
+                name: minion.name,
+                role: minion.role,
+                currentUsage: stats?.currentUsage,
+                quotas: stats?.quotas,
+                cumulativeStats: stats?.cumulativeStats || { requests: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0},
+            };
+        }));
+        setAnalyticsData(data);
+        setIsLoading(false);
+    }, [isOpen, minionConfigs, startDate, endDate]);
 
     useEffect(() => {
-        const fetchData = async () => {
-            if (!isOpen) return;
-            const start = new Date(startDate).getTime();
-            const end = new Date(endDate).getTime() + (24 * 60 * 60 * 1000 - 1); // include the whole end day
-
-            const data = await Promise.all(minionConfigs.map(async (minion) => {
-                const stats = await legionApiService.getAnalyticsData(minion.id, start, end);
-                return {
-                    id: minion.id,
-                    name: minion.name,
-                    role: minion.role,
-                    currentUsage: stats?.currentUsage,
-                    quotas: stats?.quotas,
-                    cumulativeStats: stats?.cumulativeStats || { requests: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0},
-                };
-            }));
-            setAnalyticsData(data);
-        };
         fetchData();
-    }, [isOpen, minionConfigs, startDate, endDate]);
+    }, [fetchData]);
     
     const totals = useMemo(() => {
         return analyticsData.reduce((acc, minion) => {
@@ -120,10 +124,13 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ isOpen, onClose
                 <div className="mb-6 p-4 bg-zinc-100/60 rounded-lg flex items-center justify-between gap-4">
                     <h3 className="text-lg font-semibold text-neutral-800">Overall Legion Performance</h3>
                     <div className="flex items-center gap-4 text-neutral-700">
-                         <label className="text-sm">From:</label>
+                        <label className="text-sm">From:</label>
                         <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="bg-zinc-200 text-neutral-800 p-2 rounded-md border border-zinc-300"/>
                         <label className="text-sm">To:</label>
                         <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="bg-zinc-200 text-neutral-800 p-2 rounded-md border border-zinc-300"/>
+                        <button onClick={fetchData} disabled={isLoading} className="p-2 bg-teal-600 text-white rounded-md hover:bg-teal-700 disabled:bg-teal-400 disabled:cursor-not-allowed">
+                            <ArrowPathIcon className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
+                        </button>
                     </div>
                 </div>
 

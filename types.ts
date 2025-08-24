@@ -70,6 +70,10 @@ export interface MinionConfig {
   };
   mcpTools?: { toolName: string }[];
 
+  // --- UI Customization ---
+  chatColor?: string; // Optional: Hex code for chat bubble background
+  fontColor?: string; // Optional: Hex code for chat text color
+
   // --- Regulator-specific ---
   regulationInterval?: number; // e.g., trigger every 10 messages
 
@@ -107,6 +111,7 @@ export interface PerceptionPlan extends MinionDiaryState {
   responsePlan: string; // A brief summary of what the minion intends to say if it chooses to speak.
   predictedResponseTime: number; // Estimated time in ms for how quickly the Minion wants to respond.
   toolCall?: ToolCall;
+  speakWhileTooling?: string | null; // A message to speak *before* executing a tool.
 }
 
 export interface RegulatorReport {
@@ -132,6 +137,12 @@ export interface ChatMessageData {
   isError?: boolean;
   replyToMessageId?: string; // For threaded replies (future)
   isProcessing?: boolean; // New flag for typing indicator
+
+  // New fields for structured tool calls
+  isToolCall?: boolean;
+  isToolOutput?: boolean;
+  toolCall?: ToolCall;
+  toolOutput?: string; // The raw output from the tool
 }
 
 export interface ModelOption {
@@ -139,7 +150,7 @@ export interface ModelOption {
   name: string;
 }
 
-export type ChannelType = 'user_minion_group' | 'minion_minion_auto' | 'system_log';
+export type ChannelType = 'user_minion_group' | 'minion_minion_auto' | 'system_log' | 'dm';
 
 export interface Channel {
   id:string;

@@ -7,7 +7,7 @@
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+  font-family: 'Poppins', BlinkMacSystemFont,'system-ui','Helvetica Neue', 'Ubuntu', 'Cantarell', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -54,4 +54,50 @@ input, textarea, [contenteditable] {
 
 .electron-no-drag {
   -webkit-app-region: no-drag;
+}
+
+/* --- Chat Input Caret --- */
+
+.chat-input-textarea {
+  caret-color: #f59e0b; /* Amber-500 for a vibrant caret */
+}
+
+/* --- Tool Bubble Hover Effects --- */
+.tool-call-bubble {
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+  transition: box-shadow 0.2s ease;
+}
+
+.tool-call-bubble:hover {
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.4);
+}
+
+.tool-output-bubble {
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.3);
+  transition: box-shadow 0.2s ease;
+}
+
+.tool-output-bubble:hover {
+  box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.4);
+}
+
+/* --- Typing Indicator --- */
+@keyframes typing-bounce {
+  0%, 60%, 100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  30% {
+    transform: translateY(-10px);
+    opacity: 1;
+  }
+}
+
+.typing-dot {
+  width: 6px;
+  height: 6px;
+  background-color: #64748b;
+  border-radius: 50%;
+  animation: typing-bounce 1.4s infinite;
+  will-change: transform, opacity;
 }

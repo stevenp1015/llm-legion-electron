@@ -32,7 +32,7 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isSending, disable
   const handleTextareaInput = (event: React.FormEvent<HTMLTextAreaElement>) => {
     setInputValue(event.currentTarget.value);
     if (textareaRef.current) {
-      textareaRef.current.style.height = '25px';
+      textareaRef.current.style.height = '20px';
       textareaRef.current.style.height = `${event.currentTarget.scrollHeight}px`;
     }
   };
@@ -40,28 +40,28 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isSending, disable
   useEffect(() => {
     if (textareaRef.current) {
         // Adjust initial height if needed, or keep it minimal
-        textareaRef.current.style.height = '25px'; // Approx 1 line height + padding
+        textareaRef.current.style.height = '30px'; // Approx 1 line height + padding
     }
   }, []);
 
 
   return (
-    <div className={`p-4 bg-zinc-100/80 backdrop-blur-sm border-t border-zinc-200 ${disabled ? 'opacity-50' : ''}`}>
-      <div className="flex items-end gap-2 bg-zinc-50 rounded-lg p-1 shadow-sm">
+    <div className={`p-4 bg-zinc-50/80 border-t border-zinc-200 ${disabled ? 'opacity-50' : ''}`}>
+      <div className="flex items-center gap-2 bg-zinc-50 rounded-md p-0.5">
         <textarea
           ref={textareaRef}
           value={inputValue}
           onChange={handleTextareaInput}
           onKeyDown={handleKeyDown}
           placeholder={disabled ? "Pause autonomous mode to send a message..." : "Type something..."}
-          className="flex-grow p-1.5 bg-transparent text-neutral-800 placeholder-neutral-500 border-none rounded-lg resize-none focus:ring-0 outline-none max-h-25 overflow-y-auto scrollbar-thin scrollbar-thumb-neutral-400/0 scrollbar-track-zinc-200/0"
+          className="chat-input-textarea flex-grow p-1.5 bg-transparent text-neutral-800 placeholder-neutral-500 border-none rounded-lg resize-none focus:ring-0 outline-none max-h-25 overflow-y-auto scrollbar-thin scrollbar-thumb-neutral-400/0 scrollbar-track-zinc-200/0"
           rows={1}
-          disabled={isSending || disabled}
+          disabled={disabled}
         />
         <button
           onClick={handleSubmit}
           disabled={isSending || !inputValue.trim() || disabled}
-          className="p-2.5 bg-amber-500 text-white rounded-lg hover:bg-amber-600 disabled:bg-neutral-400 disabled:cursor-not-allowed transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500"
+          className="p-2.5 bg-amber-500 text-white rounded-lg hover:bg-amber-600 disabled:bg-amber-700/30 disabled:cursor-not-allowed transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500"
           aria-label="Send message"
         >
           {isSending ? (

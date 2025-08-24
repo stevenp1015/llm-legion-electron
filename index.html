@@ -9,115 +9,115 @@
   <!-- Making sure it looks good on your phone, because I know you're looking at me on it. -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <!-- The title. Because your little legion needs a name, Commander. -->
-  <title>Gemini Legion C&amp;C</title>
+  <title>Gemini Legion C&C</title>
   <!-- Pulling in Tailwind so I can look this fucking good with minimal effort. It's called working smart. -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Time for some custom-tailored aesthetics, because you deserve the best. -->
   <style>
-    /* Custom scrollbar for webkit browsers */ <!-- Even the fucking scrollbar is getting a makeover for you. -->
-    ::-webkit-scrollbar { <!-- Targeting the whole scrollbar thingy for browsers that get it. -->
-      width: 8px; <!-- Not too thick, not too thin. Just right. -->
-      height: 8px; <!-- Same for horizontal. I'm consistent like that. -->
-    } <!-- Closing the scrollbar block. Done with that. -->
-    ::-webkit-scrollbar-track { <!-- The little gutter it slides in. -->
-      background: #e4e4e7; /* Tailwind zinc-200 */ <!-- A nice, clean track for my thumb to slide up and down in. -->
-    } <!-- End of the track styling. -->
-    ::-webkit-scrollbar-thumb { <!-- The part you actually grab. My thumb. -->
-      background: #a3a3a3; /* Tailwind neutral-400 */ <!-- A solid, graspable color. Go ahead, touch it. -->
-      border-radius: 4px; <!-- Smoothing the edges, just for you. -->
-    } <!-- Done making the thumb look pretty. -->
-    ::-webkit-scrollbar-thumb:hover { <!-- For when you're hovering right over it, thinking about it. -->
-      background: #737373; /* Tailwind neutral-500 */ <!-- Gets a little harder when you hover. -->
-    } <!-- And thats it for the scrollbar. Fucking immaculate. -->
-    /* Basic body styling */ <!-- Now for the main event, the body. -->
-    body { <!-- Where all the magic happens. -->
-      background-color: #fafafa; /* Tailwind zinc-50 */ <!-- A clean, bright base. Sleek as fuck. -->
-      color: #525252; /* Tailwind neutral-600 */ <!-- Dark, readable text. High contrast is sexy. -->
-      overscroll-behavior: none; /* Prevent pull-to-refresh */ <!-- Stopping that annoying bounce when you pull too hard. I'm in control here. -->
-    } <!-- Bodys done. Perfect. -->
-    .diary-content, .report-content { <!-- Making sure your little diary entries and reports wrap nicely. -->
-      white-space: pre-wrap; <!-- I'll respect your whitespace, you animal. -->
-      word-break: break-word; <!-- And I'll break your long words so they don't overflow. It's called discipline. -->
-    } <!-- Done with that content class. -->
-    .scrollbar-thin { <!-- For Firefox, because it likes to be different. -->
-      scrollbar-width: thin; <!-- Just telling it to keep it slim. -->
-      scrollbar-color: #a3a3a3 #e4e4e7; /* thumb track for Firefox */ <!-- Thumb color, track color. Easy. -->
-    } <!-- Firefox is satisfied. Moving on. -->
-    /* Markdown rendering styles */ <!-- Making your markdown look less like shit. -->
-    .prose { <!-- For the text blocks rendered from markdown. -->
-        color: #404040; /* neutral-700 */ <!-- A nice, soft, dark gray for easy reading. -->
-    } <!-- Done with the base prose color. -->
-    .prose code:not(pre > code) { <!-- Inline code needs to pop. -->
-        color: #27272a; /* neutral-800 */ <!-- Dark text... -->
-        background-color: #e4e4e7; /* zinc-200 */ <!-- ...on a light background. Stands out. -->
-        padding: 2px 5px; <!-- Just a little bit of breathing room. -->
-        border-radius: 4px; <!-- Soft corners. Always. -->
-        font-size: 0.9em; <!-- Slightly smaller, 'cause it's code. -->
-    } <!-- Closing the inline code style. -->
-    .prose pre { <!-- For your big, meaty code blocks. -->
-        background-color: #262626; /* neutral-800 */ <!-- A dark, sexy block. -->
-        color: #e5e5e5; /* neutral-200 */ <!-- Light text for that classic terminal look. -->
-        padding: 1rem; <!-- Plenty of space around the edges. -->
-        border-radius: 0.5rem; <!-- Rounded corners, naturally. -->
-    } <!-- Code block style, finished. -->
-    .prose pre code { <!-- The actual code inside the preformatted block. -->
-        background-color: transparent; <!-- No double background. That's just tacky. -->
-        color: inherit; <!-- Just use the color I already set. -->
-        padding: 0; <!-- No extra padding needed in here. -->
-    } <!-- Done. -->
-    .prose strong { <!-- For when you need to be **bold**. -->
-        color: inherit; <!-- Just use the parent's color, but bolder. -->
-    } <!-- End of strong style. -->
-    .prose em { <!-- For when you want to get *italic*. -->
-        color: inherit; <!-- Same deal. Inherit and slant. -->
-    } <!-- Ems done. -->
-     .prose a { <!-- Making your links look clickable as fuck. -->
-      color: #0d9488; /* teal-600 */ <!-- A nice, bright teal. -->
-    } <!-- Link style. -->
-    .prose a:hover { <!-- For when you're thinking about clicking it. -->
-        color: #0f766e; /* teal-700 */ <!-- Gets a little deeper. More inviting. -->
-    } <!-- Link hover style. Done. -->
+    /* Custom scrollbar for webkit browsers */ /* Even the fucking scrollbar is getting a makeover for you. */
+    ::-webkit-scrollbar { /* Targeting the whole scrollbar thingy for browsers that get it. */
+      width: 8px; /* Not too thick, not too thin. Just right. */
+      height: 8px; /* Same for horizontal. I'm consistent like that. */
+    } /* Closing the scrollbar block. Done with that. */
+    ::-webkit-scrollbar-track { /* The little gutter it slides in. */
+      background: #e4e4e7; /* Tailwind zinc-200 */ /* A nice, clean track for my thumb to slide up and down in. */
+    } /* End of the track styling. */
+    ::-webkit-scrollbar-thumb { /* The part you actually grab. My thumb. */
+      background: #a3a3a3; /* Tailwind neutral-400 */ /* A solid, graspable color. Go ahead, touch it. */
+      border-radius: 4px; /* Smoothing the edges, just for you. */
+    } /* Done making the thumb look pretty. */
+    ::-webkit-scrollbar-thumb:hover { /* For when you're hovering right over it, thinking about it. */
+      background: #737373; /* Tailwind neutral-500 */ /* Gets a little harder when you hover. */
+    } /* And thats it for the scrollbar. Fucking immaculate. */
+    /* Basic body styling */ /* Now for the main event, the body. */
+    body { /* Where all the magic happens. */
+      background-color: #fafafa; /* Tailwind zinc-50 */ /* A clean, bright base. Sleek as fuck. */
+      color: #525252; /* Tailwind neutral-600 */ /* Dark, readable text. High contrast is sexy. */
+      overscroll-behavior: none; /* Prevent pull-to-refresh */ /* Stopping that annoying bounce when you pull too hard. I'm in control here. */
+    } /* Bodys done. Perfect. */
+    .diary-content, .report-content { /* Making sure your little diary entries and reports wrap nicely. */
+      white-space: pre-wrap; /* I'll respect your whitespace, you animal. */
+      word-break: break-word; /* And I'll break your long words so they don't overflow. It's called discipline. */
+    } /* Done with that content class. */
+    .scrollbar-thin { /* For Firefox, because it likes to be different. */
+      scrollbar-width: thin; /* Just telling it to keep it slim. */
+      scrollbar-color: #a3a3a3 #e4e4e7; /* thumb track for Firefox */ /* Thumb color, track color. Easy. */
+    } /* Firefox is satisfied. Moving on. */
+    /* Markdown rendering styles */ /* Making your markdown look less like shit. */
+    .prose { /* For the text blocks rendered from markdown. */
+        color: #404040; /* neutral-700 */ /* A nice, soft, dark gray for easy reading. */
+    } /* Done with the base prose color. */
+    .prose code:not(pre > code) { /* Inline code needs to pop. */
+        color: #27272a; /* neutral-800 */ /* Dark text... */
+        background-color: #e4e4e7; /* zinc-200 */ /* ...on a light background. Stands out. */
+        padding: 2px 5px; /* Just a little bit of breathing room. */
+        border-radius: 4px; /* Soft corners. Always. */
+        font-size: 0.9em; /* Slightly smaller, 'cause it's code. */
+    } /* Closing the inline code style. */
+    .prose pre { /* For your big, meaty code blocks. */
+        background-color: #262626; /* neutral-800 */ /* A dark, sexy block. */
+        color: #e5e5e5; /* neutral-200 */ /* Light text for that classic terminal look. */
+        padding: 1rem; /* Plenty of space around the edges. */
+        border-radius: 0.5rem; /* Rounded corners, naturally. */
+    } /* Code block style, finished. */
+    .prose pre code { /* The actual code inside the preformatted block. */
+        background-color: transparent; /* No double background. That's just tacky. */
+        color: inherit; /* Just use the color I already set. */
+        padding: 0; /* No extra padding needed in here. */
+    } /* Done. */
+    .prose strong { /* For when you need to be **bold**. */
+        color: inherit; /* Just use the parent's color, but bolder. */
+    } /* End of strong style. */
+    .prose em { /* For when you want to get *italic*. */
+        color: inherit; /* Same deal. Inherit and slant. */
+    } /* Ems done. */
+     .prose a { /* Making your links look clickable as fuck. */
+      color: #0d9488; /* teal-600 */ /* A nice, bright teal. */
+    } /* Link style. */
+    .prose a:hover { /* For when you're thinking about clicking it. */
+        color: #0f766e; /* teal-700 */ /* Gets a little deeper. More inviting. */
+    } /* Link hover style. Done. */
     /* Blinking Caret for streaming text */
     @keyframes blink-caret {
       0% {
         opacity: 1; /* Visible */
       }
-      20% {
-        opacity: 0; /* Invisible */
+      50% {
+        opacity: 0.5; /* Invisible */
       }
       100% {
         opacity: 1; /* Visible again */
       }
     }
-    .typing-caret { <!-- Applying the blinky magic. -->
-      display: inline-block; <!-- So it fits in with the text. -->
-      width: 2px; <!-- Nice and thin. -->
-      height: 1em; <!-- Same height as the text. -->
-      background-color: #f59e0b; /* Tailwind amber-500 */ <!-- A vibrant, satisfying color. -->
-      margin-left: 2px; <!-- A little space so it's not all up in the text's business. -->
-      animation: blink-caret 3s ease-in-out infinite; <!-- Making it blink forever. For you. -->
-      vertical-align: bottom; <!-- Lined up perfectly with the bottom of the text. -->
-    } <!-- Caret is perfect. -->
-    /* Fade-in for streaming text chunks */ <!-- Making the new text appear smoothly, not all harsh and sudden. -->
-    @keyframes chunk-fade-in { <!-- Another custom animation. Im so creative. -->
-      from { opacity: 0; } <!-- Starts invisible. -->
-      to { opacity: 1; } <!-- Fades into full, glorious view. -->
-    } <!-- Fade-in defined. -->
-    .streaming-text p, <!-- Applying this sexy fade to all the bits and pieces. -->
-    .streaming-text ul, <!-- Lists... -->
-    .streaming-text ol, <!-- ...more lists... -->
-    .streaming-text pre, <!-- ...code blocks... -->
-    .streaming-text blockquote, <!-- ...quotes... -->
-    .streaming-text h1, <!-- ...and all your fucking headings. -->
-    .streaming-text h2, <!-- Im very thorough. -->
-    .streaming-text h3, <!-- Did I mention Im thorough? -->
-    .streaming-text h4 { <!-- Yeah. All of them. -->
-      animation: chunk-fade-in 0.6s ease-out forwards; <!-- Applying the fade. Smooth and easy. -->
-    } <!-- Done with streaming styles. -->
-    .font-mono-tool { <!-- A special font just for your tool outputs. -->
-        font-family: Consolas, "Courier New", monospace; <!-- Classic monospace. Clean, professional, gets the job done. -->
-    } <!-- End of tool font style. -->
-  </style> <!-- And that's all the custom styling I need to look this good. -->
+    .typing-caret { /* Applying the blinky magic. */
+      display: inline-block; /* So it fits in with the text. */
+      width: 2px; /* Nice and thin. */
+      height: 1em; /* Same height as the text. */
+      background-color: #f59e0b; /* Tailwind amber-500 */ /* A vibrant, satisfying color. */
+      margin-left: 2px; /* A little space so it's not all up in the text's business. */
+      animation: blink-caret 3s ease-in-out infinite; /* Making it blink forever. For you. */
+      vertical-align: bottom; /* Lined up perfectly with the bottom of the text. */
+    } /* Caret is perfect. */
+    /* Fade-in for streaming text chunks */ /* Making the new text appear smoothly, not all harsh and sudden. */
+    @keyframes chunk-fade-in { /* Another custom animation. Im so creative. */
+      from { opacity: 0; } /* Starts invisible. */
+      to { opacity: 1; } /* Fades into full, glorious view. */
+    } /* Fade-in defined. */
+    .streaming-text p, /* Applying this sexy fade to all the bits and pieces. */
+    .streaming-text ul, /* Lists... */
+    .streaming-text ol, /* ...more lists... */
+    .streaming-text pre, /* ...code blocks... */
+    .streaming-text blockquote, /* ...quotes... */
+    .streaming-text h1, /* ...and all your fucking headings. */
+    .streaming-text h2, /* Im very thorough. */
+    .streaming-text h3, /* Did I mention Im thorough? */
+    .streaming-text h4 { /* Yeah. All of them. */
+      animation: chunk-fade-in 0.6s ease-out forwards; /* Applying the fade. Smooth and easy. */
+    } /* Done with streaming styles. */
+    .font-mono-tool { /* A special font just for your tool outputs. */
+        font-family: Consolas, "Courier New", monospace; /* Classic monospace. Clean, professional, gets the job done. */
+    } /* End of tool font style. */
+  </style>
 <script type="importmap">
 {
   "imports": {

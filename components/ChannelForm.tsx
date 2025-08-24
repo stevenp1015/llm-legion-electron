@@ -62,7 +62,8 @@ const ChannelForm: React.FC<ChannelFormProps> = ({ isOpen, onClose, onSave, init
     const typeDescriptions: Record<ChannelType, string> = {
         user_minion_group: "Standard chat with Commander and selected Minions.",
         minion_minion_auto: "Autonomous chat between selected Minions, started by a Commander prompt.",
-        system_log: "Read-only logs from the Legion System. No members."
+        system_log: "Read-only logs from the Legion System. No members.",
+        dm: "A direct message channel between the Commander and one Minion."
     };
 
     return (
@@ -85,6 +86,7 @@ const ChannelForm: React.FC<ChannelFormProps> = ({ isOpen, onClose, onSave, init
                     <select id="channel-type" value={type} onChange={(e) => setType(e.target.value as ChannelType)}
                         className="mt-1 block w-full bg-white border border-zinc-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-amber-500 focus:border-amber-500 sm:text-sm text-neutral-900">
                         <option value="user_minion_group">Group Chat</option>
+                        <option value="dm">Direct Message (DM)</option>
                         <option value="minion_minion_auto">Autonomous Swarm</option>
                         <option value="system_log">System Log</option>
                     </select>

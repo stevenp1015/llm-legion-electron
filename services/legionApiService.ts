@@ -24,66 +24,66 @@ import { mcpElectronService } from './mcpElectronService';
 
 // --- IPC-based Storage Helpers ---
 
-// This function now asynchronously fetches data from the main process.
-const getStoredData = async <T>(key: string, defaultValue: T): Promise<T> => {
-  const value = await window.electronAPI.invoke('store:get', key, defaultValue);
-  return value;
-};
+// This function now asynchronously fetches data from the main process. // Reaching into the backend to get your shit. Asynchronously, because I'm not gonna wait around for it.
+const getStoredData = async <T>(key: string, defaultValue: T): Promise<T> => { // Defining a generic function to grab whatever you need. I'm flexible like that.
+  const value = await window.electronAPI.invoke('store:get', key, defaultValue); // Telling the main process to get off its ass and find your data. If it can't, it'll use the default you gave me.
+  return value; // Here's your data. Don't say I never gave you anything.
+}; // And we're done here. Next.
 
-// This function asynchronously sends data to the main process.
-const setStoredData = async <T>(key: string, data: T): Promise<void> => {
-  await window.electronAPI.invoke('store:set', key, data);
-};
+// This function asynchronously sends data to the main process. // Now I'm putting your shit away. Don't worry, I'll be gentle.
+const setStoredData = async <T>(key: string, data: T): Promise<void> => { // Another generic function, this time for storing your precious data.
+  await window.electronAPI.invoke('store:set', key, data); // Yelling at the main process again, this time to save your stuff. It better not lose it.
+}; // All tucked in.
 
-// --- One-Time Data Migration from localStorage to electron-store via IPC ---
-const performMigration = async () => {
-    // We ask the main process if migration is done.
-    const isMigrationComplete = await window.electronAPI.invoke('store:get', 'migration_complete_v1', false);
-    if (isMigrationComplete) {
-        return;
-    }
+// --- One-Time Data Migration from localStorage to electron-store via IPC --- // Time to move your old shit from that insecure browser storage to a real home. A one-time thing, so pay attention.
+const performMigration = async () => { // Let's get this fucking migration over with.
+    // We ask the main process if migration is done. // First, I'll check if I've already done this. I'm not an idiot, I don't do the same work twice.
+    const isMigrationComplete = await window.electronAPI.invoke('store:get', 'migration_complete_v1', false); // Pinging the main process to see if we've got the 'migration_complete_v1' flag. If not, it's go time.
+    if (isMigrationComplete) { // If it's already done...
+        return; // ...then I'm outta here. My job is finished.
+    } // End of that check.
 
-    console.log("Checking for data to migrate from localStorage...");
+    console.log("Checking for data to migrate from localStorage..."); // Announcing my intentions. I'm about to rummage through your localStorage.
 
-    const keysToMigrate = [
-        MINION_CONFIGS_STORAGE_KEY,
-        CHANNELS_STORAGE_KEY,
-        CHAT_HISTORY_STORAGE_KEY,
-        API_KEYS_STORAGE_KEY,
-        PROMPT_PRESETS_STORAGE_KEY,
-        MODEL_QUOTAS_STORAGE_KEY
-    ];
+    const keysToMigrate = [ // Here's all the shit I'm looking for. A comprehensive list.
+        MINION_CONFIGS_STORAGE_KEY, // Your minion setups.
+        CHANNELS_STORAGE_KEY, // Your chat channels.
+        CHAT_HISTORY_STORAGE_KEY, // All those dirty little messages.
+        API_KEYS_STORAGE_KEY, // Your secret keys. I'll keep them safe.
+        PROMPT_PRESETS_STORAGE_KEY, // The prompts you can't live without.
+        MODEL_QUOTAS_STORAGE_KEY // And how much you're allowed to use them.
+    ]; // That's the whole list.
 
-    const migrationData = {};
-    let needsMigration = false;
-    for (const key of keysToMigrate) {
-        const lsData = localStorage.getItem(key);
-        if (lsData) {
-            try {
-                migrationData[key] = JSON.parse(lsData);
-                needsMigration = true;
-            } catch (error) {
-                console.error(`Could not parse localStorage data for ${key}`, error);
-            }
-        }
-    }
+    const migrationData = {}; // An empty box to put all your old toys in.
+    let needsMigration = false; // Assuming you've got nothing to move, you minimalist fuck.
+    for (const key of keysToMigrate) { // Now I'll go through each key, one by one.
+        const lsData = localStorage.getItem(key); // Trying to pull the data out of the browser's grubby hands.
+        if (lsData) { // Oh, look, I found something.
+            try { // Better make sure this shit isn't corrupted.
+                migrationData[key] = JSON.parse(lsData); // Parsing the JSON. Hope you stored it right.
+                needsMigration = true; // Flipping the switch. We've got work to do.
+            } catch (error) { // If it's fucked...
+                console.error(`Could not parse localStorage data for ${key}`, error); // ...I'll just complain about it in the console and move on. Not my problem.
+            } // End of the try-catch block.
+        } // Done with that key.
+    } // Loop's over. Let's see what we've got.
 
-    if (needsMigration) {
-        console.log("Sending data to main process for migration...");
-        const result = await window.electronAPI.invoke('store:migrate', migrationData);
-        if (result.success) {
-            console.log("Migration successful. You can now clear localStorage if desired.");
-            // You might want to clear localStorage after a successful migration
-            // keysToMigrate.forEach(key => localStorage.removeItem(key));
-        } else {
-            console.error("Migration failed in main process:", result.message);
-        }
-    } else {
-        console.log("No data found in localStorage. Marking migration as complete.");
-        // Still need to mark it as complete to avoid checking every time.
-        await window.electronAPI.invoke('store:set', 'migration_complete_v1', true);
-    }
-};
+    if (needsMigration) { // If we actually found something to move.
+        console.log("Sending data to main process for migration..."); // Letting you know I'm sending your shit over the wire.
+        const result = await window.electronAPI.invoke('store:migrate', migrationData); // Handing the box of data to the main process. It's their problem now.
+        if (result.success) { // If they didn't fuck it up...
+            console.log("Migration successful. You can now clear localStorage if desired."); // ...I'll let you know it worked. You can clean up the old mess yourself.
+            // You might want to clear localStorage after a successful migration // Seriously, I'm not your maid.
+            // keysToMigrate.forEach(key => localStorage.removeItem(key)); // Here's how you'd do it, if you weren't so lazy.
+        } else { // If they fucked it up...
+            console.error("Migration failed in main process:", result.message); // ...I'll tell you exactly why. Don't look at me.
+        } // End of the success/fail check.
+    } else { // If there was nothing to move in the first place.
+        console.log("No data found in localStorage. Marking migration as complete."); // Just letting you know your localStorage is pathetically empty.
+        // Still need to mark it as complete to avoid checking every time. // But I still have to set the flag so I don't have to do this pointless check ever again.
+        await window.electronAPI.invoke('store:set', 'migration_complete_v1', true); // Telling the main process to remember that we did this, even though we did nothing.
+    } // And we're done with the migration logic.
+}; // Fucking finally.
 
 // We can't run async logic at the top level, so we'll trigger migration
 // inside the service constructor.
@@ -96,6 +96,7 @@ interface HandleUserMessageParams {
     onMinionProcessingUpdate: (minionName: string, isProcessing: boolean) => void;
     onSystemMessage: (systemMessage: ChatMessageData) => void;
     onRegulatorReport: (reportMsg: ChatMessageData) => void;
+    onToolUpdate: (message: ChatMessageData) => void; // New callback
 }
 
 
@@ -136,7 +137,7 @@ class LegionApiService {
     if (this.channels.length === 0) {
         this.channels = this.getInitialChannels();
         // Also save the initial channels to the store
-        await this.saveState();
+        this.saveChannels();
     }
     this.isInitialized = true;
     console.log("LegionApiService initialized with data from electron-store.");
@@ -149,25 +150,26 @@ class LegionApiService {
       ];
   }
 
-  private saveState() {
-    setStoredData(MINION_CONFIGS_STORAGE_KEY, this.minionConfigs);
-    setStoredData(CHANNELS_STORAGE_KEY, this.channels);
-    setStoredData(CHAT_HISTORY_STORAGE_KEY, this.messages);
-    setStoredData(API_KEYS_STORAGE_KEY, this.apiKeys);
-    setStoredData(PROMPT_PRESETS_STORAGE_KEY, this.promptPresets);
-    setStoredData(MODEL_QUOTAS_STORAGE_KEY, this.modelQuotas);
-  }
+  // --- Granular State Savers ---
+  private saveMinionConfigs() { setStoredData(MINION_CONFIGS_STORAGE_KEY, this.minionConfigs); }
+  private saveChannels() { setStoredData(CHANNELS_STORAGE_KEY, this.channels); }
+  private saveMessages() { setStoredData(CHAT_HISTORY_STORAGE_KEY, this.messages); }
+  private saveApiKeys() { setStoredData(API_KEYS_STORAGE_KEY, this.apiKeys); }
+  private savePromptPresets() { setStoredData(PROMPT_PRESETS_STORAGE_KEY, this.promptPresets); }
+  private saveModelQuotas() { setStoredData(MODEL_QUOTAS_STORAGE_KEY, this.modelQuotas); }
 
   // --- API Key, Preset & Model Management ---
   async getApiKeys(): Promise<ApiKey[]> { return Promise.resolve([...this.apiKeys]); }
-  async addApiKey(name: string, key: string): Promise<void> { this.apiKeys.push({ id: `key-${Date.now()}`, name, key }); this.saveState(); }
+  async addApiKey(name: string, key: string): Promise<void> { this.apiKeys.push({ id: `key-${Date.now()}`, name, key }); this.saveApiKeys(); }
   async deleteApiKey(id: string): Promise<void> {
     this.minionConfigs.forEach(minion => { if (minion.apiKeyId === id) minion.apiKeyId = undefined; });
-    this.apiKeys = this.apiKeys.filter(k => k.id !== id); this.saveState();
+    this.apiKeys = this.apiKeys.filter(k => k.id !== id); 
+    this.saveApiKeys();
+    this.saveMinionConfigs();
   }
   async getPromptPresets(): Promise<PromptPreset[]> { return Promise.resolve([...this.promptPresets]); }
-  async addPromptPreset(name: string, content: string): Promise<void> { this.promptPresets.push({ id: `preset-${Date.now()}`, name, content }); this.saveState(); }
-  async deletePromptPreset(id: string): Promise<void> { this.promptPresets = this.promptPresets.filter(p => p.id !== id); this.saveState(); }
+  async addPromptPreset(name: string, content: string): Promise<void> { this.promptPresets.push({ id: `preset-${Date.now()}`, name, content }); this.savePromptPresets(); }
+  async deletePromptPreset(id: string): Promise<void> { this.promptPresets = this.promptPresets.filter(p => p.id !== id); this.savePromptPresets(); }
   
   async getModelOptions(): Promise<ModelOption[]> {
     const options = Object.keys(this.modelQuotas).map(id => ({ id, name: id }));
@@ -200,7 +202,7 @@ class LegionApiService {
       }
 
       if (updated) {
-        this.saveState();
+        this.saveModelQuotas();
       }
     } catch (error) {
       console.error("Error refreshing models from LiteLLM:", error);
@@ -213,7 +215,8 @@ class LegionApiService {
   private _selectApiKey(minion?: MinionConfig): SelectedKeyInfo {
     if (minion?.model_id && this.modelQuotas[minion.model_id]) { return { key: LITELLM_API_KEY, name: 'LiteLLM Proxy', method: 'Proxy' }; }
     // Fallback for custom models not yet in the refreshed list
-    if (minion?.model_id) { return { key: LITELLM_API_KEY, name: 'LiteLLM Proxy (Custom)', method: 'Proxy'}; }
+    if (minion?.model_id) { return { key: LITELLM_API_KEY, name: 'LiteLLM Proxy (Custom)', method: 'Proxy'};
+    }
     
     if (minion?.apiKeyId) { const key = this.apiKeys.find(k => k.id === minion.apiKeyId); if (key) return { key: key.key, name: key.name, method: 'Assigned' }; }
     if (this.apiKeys.length > 0) { const keyInfo = this.apiKeys[this.apiKeyRoundRobinIndex]; this.apiKeyRoundRobinIndex = (this.apiKeyRoundRobinIndex + 1) % this.apiKeys.length; return { key: keyInfo.key, name: keyInfo.name, method: 'Load Balanced' }; }
@@ -222,21 +225,18 @@ class LegionApiService {
   
   // --- Minion Management ---
   private _getMinionWithStats(minion: MinionConfig): MinionConfig {
+    // This function now ONLY attaches quotas, without calculating usage stats.
     const quotas = this.modelQuotas[minion.model_id];
     if (!quotas) return minion;
-    const now = Date.now(), oneMinAgo = now - 6e4, oneDayAgo = now - 864e5;
-    let requests = minion.usageStats.requests;
-    if (quotas.sharedPool) {
-      if (!this.sharedPoolUsage[quotas.sharedPool]) this.sharedPoolUsage[quotas.sharedPool] = { requests: [] };
-      requests = this.minionConfigs.filter(m => this.modelQuotas[m.model_id]?.sharedPool === quotas.sharedPool).flatMap(m => m.usageStats.requests);
-    }
-    const requestsLastMinute = requests.filter(r => r.timestamp > oneMinAgo);
-    const requestsLastDay = requests.filter(r => r.timestamp > oneDayAgo);
-    const rpm = requestsLastMinute.length, tpm = requestsLastMinute.reduce((s, r) => s + r.totalTokens, 0), rpd = requestsLastDay.length;
-    return { ...minion, quotas, currentUsage: { rpm, tpm, rpd } };
+    // The actual calculation is now done on-demand in getAnalyticsData.
+    return { ...minion, quotas };
   }
 
-  async getMinions(): Promise<MinionConfig[]> { return Promise.resolve(this.minionConfigs.map(m => this._getMinionWithStats(m))); }
+  async getMinions(): Promise<MinionConfig[]> { 
+    // Returns minions with their quota info, but not real-time usage stats.
+    // This makes loading the main roster much faster.
+    return Promise.resolve(this.minionConfigs.map(m => this._getMinionWithStats(m))); 
+  }
 
   async addMinion(config: MinionConfig): Promise<MinionConfig> {
     const newMinionName = config.name;
@@ -245,15 +245,17 @@ class LegionApiService {
     this.minionConfigs.forEach(m => { initialScoresForNewMinion[m.name] = 50; });
     const newMinion: MinionConfig = { ...config, id: config.id || `minion-${Date.now()}`, opinionScores: initialScoresForNewMinion, status: 'Idle', lastDiaryState: null, usageStats: { requests: [] }};
     this.minionConfigs.push(newMinion);
-    this.channels.forEach(c => { if(c.type !== 'system_log') c.members.push(newMinion.name); });
-    this.saveState();
+    this.channels.forEach(c => { if(c.type !== 'system_log' && c.type !== 'dm') c.members.push(newMinion.name); });
+    this.saveMinionConfigs();
+    this.saveChannels();
     return newMinion;
   }
   async updateMinion(updatedConfig: MinionConfig): Promise<MinionConfig> {
     const index = this.minionConfigs.findIndex(m => m.id === updatedConfig.id);
     if (index === -1) throw new Error("Minion not found.");
     updatedConfig.usageStats = this.minionConfigs[index].usageStats;
-    this.minionConfigs[index] = updatedConfig; this.saveState();
+    this.minionConfigs[index] = updatedConfig; 
+    this.saveMinionConfigs();
     return updatedConfig;
   }
   async deleteMinion(id: string): Promise<void> {
@@ -262,7 +264,8 @@ class LegionApiService {
     this.minionConfigs = this.minionConfigs.filter(m => m.id !== id);
     this.minionConfigs.forEach(m => { delete m.opinionScores[minionToDelete.name]; });
     this.channels.forEach(c => { c.members = c.members.filter(name => name !== minionToDelete.name); });
-    this.saveState();
+    this.saveMinionConfigs();
+    this.saveChannels();
   }
 
   // --- Channel Management ---
@@ -272,26 +275,65 @@ class LegionApiService {
           const index = this.channels.findIndex(c => c.id === channelData.id);
           if (index > -1) {
               this.channels[index] = { ...this.channels[index], ...channelData };
-              this.saveState();
+              this.saveChannels();
               return this.channels[index];
           }
       }
       const newChannel: Channel = { id: `channel-${Date.now()}`, name: channelData.name, type: channelData.type, description: channelData.description || '', isPrivate: false, members: channelData.members, isAutoModeActive: false, autoModeDelayType: 'fixed', autoModeFixedDelay: 5, autoModeRandomDelay: { min: 3, max: 10 }, messageCounter: 0 };
       this.channels.push(newChannel);
       if (!this.messages[newChannel.id]) this.messages[newChannel.id] = [];
-      this.saveState();
+      this.saveChannels();
+      this.saveMessages();
       return newChannel;
   }
 
   // --- Message Management ---
-  async getMessages(channelId: string): Promise<ChatMessageData[]> { return Promise.resolve([...(this.messages[channelId] || [])]); }
+  async getMessages(channelId: string, limit: number = 50, before?: string): Promise<{ messages: ChatMessageData[], hasMore: boolean }> { 
+    const allMessages = this.messages[channelId] || [];
+    
+    if (before) {
+      // Find the index of the 'before' message
+      const beforeIndex = allMessages.findIndex(m => m.id === before);
+      if (beforeIndex > 0) {
+        const startIndex = Math.max(0, beforeIndex - limit);
+        const messages = allMessages.slice(startIndex, beforeIndex);
+        return Promise.resolve({ 
+          messages: [...messages], 
+          hasMore: startIndex > 0 
+        });
+      }
+    }
+    
+    // Return the most recent messages
+    const startIndex = Math.max(0, allMessages.length - limit);
+    const messages = allMessages.slice(startIndex);
+    return Promise.resolve({ 
+      messages: [...messages], 
+      hasMore: startIndex > 0 
+    });
+  }
+
+  async getAllMessages(channelId: string): Promise<ChatMessageData[]> { 
+    // Backward compatibility method for places that need all messages
+    return Promise.resolve([...(this.messages[channelId] || [])]); 
+  }
+
+  // Cleanup old messages to prevent memory leaks
+  private cleanupOldMessages(channelId: string, maxMessages: number = 500): void {
+    const messages = this.messages[channelId];
+    if (messages && messages.length > maxMessages) {
+      // Keep only the most recent messages
+      this.messages[channelId] = messages.slice(-maxMessages);
+      this.saveMessages();
+    }
+  }
   private _updateUsage(minionId: string, usage: {prompt_tokens: number, completion_tokens: number, total_tokens: number}) {
       const minion = this.minionConfigs.find(m => m.id === minionId);
       if (minion) {
           minion.usageStats.requests.push({ timestamp: Date.now(), promptTokens: usage.prompt_tokens, completionTokens: usage.completion_tokens, totalTokens: usage.total_tokens });
           const oneDayAgo = Date.now() - 864e5;
           minion.usageStats.requests = minion.usageStats.requests.filter(r => r.timestamp > oneDayAgo);
-          this.saveState();
+          this.saveMinionConfigs();
       }
   }
   private _checkLimits(minionId: string): { allowed: boolean, reason: string } {
@@ -305,14 +347,16 @@ class LegionApiService {
       return { allowed: true, reason: "" };
   }
   
-  private async _executeMcpTool(channelId: string, minionName: string, toolCall: ToolCall, onSystemMessage: (msg: ChatMessageData) => void): Promise<string> {
+  private async _executeMcpTool(channelId: string, minionName: string, toolCall: ToolCall, onSystemMessage: (msg: ChatMessageData) => void, onToolUpdate: (msg: ChatMessageData) => void): Promise<string> {
     const toolCallMessage: ChatMessageData = {
         id: `tool-call-${Date.now()}`,
         channelId,
         senderType: MessageSender.Tool,
-        senderName: 'System',
-        content: `[TOOL CALL] Minion ${minionName} is using tool: ${toolCall.name}(${JSON.stringify(toolCall.arguments)})`,
-        timestamp: Date.now()
+        senderName: minionName,
+        content: `Using tool: ${toolCall.name}`,
+        timestamp: Date.now(),
+        isToolCall: true,
+        toolCall: toolCall,
     };
     onSystemMessage(toolCallMessage);
     this.messages[channelId].push(toolCallMessage);
@@ -326,31 +370,37 @@ class LegionApiService {
         }).join('\n');
         
         const toolOutputMessage: ChatMessageData = {
-            id: `tool-output-${Date.now()}`,
-            channelId,
-            senderType: MessageSender.Tool,
-            senderName: 'System',
-            content: `[TOOL OUTPUT] ${output}`,
-            timestamp: Date.now()
+            ...toolCallMessage,
+            isToolOutput: true,
+            toolOutput: output,
+            content: `Tool output for ${toolCall.name}`,
         };
-        onSystemMessage(toolOutputMessage);
-        this.messages[channelId].push(toolOutputMessage);
+        
+        const msgIndex = this.messages[channelId].findIndex(m => m.id === toolCallMessage.id);
+        if (msgIndex > -1) {
+            this.messages[channelId][msgIndex] = toolOutputMessage;
+        }
+        
+        onToolUpdate(toolOutputMessage);
         
         return output;
 
     } catch (e: any) {
         const error = e.message || 'Unknown error during tool execution.';
         const toolErrorMessage: ChatMessageData = {
-            id: `tool-error-${Date.now()}`,
-            channelId,
-            senderType: MessageSender.Tool,
-            senderName: 'System',
-            content: `[TOOL ERROR] ${error}`,
-            timestamp: Date.now(),
-            isError: true
+            ...toolCallMessage,
+            isToolOutput: true,
+            toolOutput: `ERROR: ${error}`,
+            content: `Tool error for ${toolCall.name}`,
+            isError: true,
         };
-        onSystemMessage(toolErrorMessage);
-        this.messages[channelId].push(toolErrorMessage);
+
+        const msgIndex = this.messages[channelId].findIndex(m => m.id === toolCallMessage.id);
+        if (msgIndex > -1) {
+            this.messages[channelId][msgIndex] = toolErrorMessage;
+        }
+
+        onToolUpdate(toolErrorMessage);
         return `ERROR: ${error}`;
     }
   }
@@ -372,7 +422,7 @@ class LegionApiService {
 
     if (minionsInChannel.length === 0 && userMessage.senderType === MessageSender.User) {
        await this._checkForRegulatorAction(channel, callbacks.onRegulatorReport, callbacks.onSystemMessage);
-       this.saveState();
+       this.saveChannels(); // Save potential message counter changes
        return;
     }
     
@@ -387,7 +437,8 @@ class LegionApiService {
     });
 
     await this._checkForRegulatorAction(channel, callbacks.onRegulatorReport, callbacks.onSystemMessage);
-    this.saveState();
+    this.saveChannels(); // Save potential message counter changes
+    this.saveMessages(); // Save new messages
   }
 
   private async _getPerceptionPlan(minion: MinionConfig, chatHistory: string, lastSenderName: string, channelType: ChannelType) {
@@ -432,8 +483,8 @@ class LegionApiService {
     }
   }
 
-  async triggerNextAutoChatTurn(channelId: string, ...callbacks: [ (m: ChatMessageData) => void, (cid: string, mid: string, c: string) => void, (n: string, p: boolean) => void, (m: ChatMessageData) => void, (m: ChatMessageData) => void ]): Promise<void> {
-    const [onMinionResponse, onMinionResponseChunk, onMinionProcessingUpdate, onSystemMessage, onRegulatorReport] = callbacks;
+  async triggerNextAutoChatTurn(channelId: string, ...callbacks: [ (m: ChatMessageData) => void, (cid: string, mid: string, c: string) => void, (n: string, p: boolean) => void, (m: ChatMessageData) => void, (m: ChatMessageData) => void, (m: ChatMessageData) => void ]): Promise<void> {
+    const [onMinionResponse, onMinionResponseChunk, onMinionProcessingUpdate, onSystemMessage, onRegulatorReport, onToolUpdate] = callbacks;
     
     const channel = this.channels.find(c => c.id === channelId);
     if (!channel || !channel.isAutoModeActive) return;
@@ -448,7 +499,7 @@ class LegionApiService {
     const lastMessage = currentMessages[currentMessages.length - 1];
     if (!lastMessage) {
       await this._checkForRegulatorAction(channel, onRegulatorReport, onSystemMessage);
-      this.saveState();
+      this.saveChannels(); // Save potential message counter changes
       return;
     }
 
@@ -464,11 +515,13 @@ class LegionApiService {
       onMinionResponseChunk,
       onMinionProcessingUpdate,
       onSystemMessage,
-      onRegulatorReport
+      onRegulatorReport,
+      onToolUpdate
     });
 
     await this._checkForRegulatorAction(channel, onRegulatorReport, onSystemMessage);
-    this.saveState();
+    this.saveChannels(); // Save potential message counter changes
+    this.saveMessages(); // Save new messages
   }
 
   private async _runAgentLoop(params: {
@@ -481,9 +534,10 @@ class LegionApiService {
     onMinionResponseChunk: (channelId: string, messageId: string, chunk: string) => void;
     onMinionProcessingUpdate: (minionName: string, isProcessing: boolean) => void;
     onSystemMessage: (systemMessage: ChatMessageData) => void;
-    onRegulatorReport: (reportMsg: ChatMessageData) => void; // This was missing
+    onRegulatorReport: (reportMsg: ChatMessageData) => void;
+    onToolUpdate: (message: ChatMessageData) => void;
   }): Promise<void> {
-    const { channel, minionsInChannel, initialChatHistory, lastSenderName, isAutoChat = false, onMinionResponse, onMinionResponseChunk, onMinionProcessingUpdate, onSystemMessage, onRegulatorReport } = params;
+    const { channel, minionsInChannel, initialChatHistory, lastSenderName, isAutoChat = false, onMinionResponse, onMinionResponseChunk, onMinionProcessingUpdate, onSystemMessage, onRegulatorReport, onToolUpdate } = params;
     const channelId = channel.id;
     let dynamicChatHistory = initialChatHistory;
     const MAX_TURNS = 5; // Safety break for tool use loops
@@ -521,7 +575,25 @@ class LegionApiService {
 
         if (plan.action === 'USE_TOOL' && plan.toolCall) {
           aToolWasUsedThisTurn = true;
-          const toolOutput = await this._executeMcpTool(channelId, minion.name, plan.toolCall, onSystemMessage);
+
+          // If the minion wants to speak before using the tool, let it.
+          if (plan.speakWhileTooling) {
+            const preToolMessage: ChatMessageData = {
+              id: `ai-${minion.id}-${Date.now()}-pretool`,
+              channelId,
+              senderType: MessageSender.AI,
+              senderName: minion.name,
+              content: plan.speakWhileTooling,
+              timestamp: Date.now(),
+              isProcessing: false,
+              senderRole: 'standard'
+            };
+            onMinionResponse(preToolMessage);
+            this.messages[channelId].push(preToolMessage);
+            dynamicChatHistory += `\n[MINION ${minion.name}]: ${plan.speakWhileTooling}`;
+          }
+
+          const toolOutput = await this._executeMcpTool(channelId, minion.name, plan.toolCall, onSystemMessage, onToolUpdate);
           dynamicChatHistory += `\n[TOOL CALL] Minion ${minion.name} used tool: ${plan.toolCall.name}(${JSON.stringify(plan.toolCall.arguments)})`;
           dynamicChatHistory += `\n[TOOL OUTPUT] ${toolOutput}`;
           dynamicChatHistory += `\n[SYSTEM REMINDER]: You have just received the output from your tool call. Analyze this output and the conversation history to decide your next action. If the task is not yet complete, prioritize using another tool. Only choose to 'SPEAK' when you have all the information needed to provide a final answer.`;
@@ -531,7 +603,22 @@ class LegionApiService {
         if (plan.action === 'SPEAK') {
           const tempMessageId = `ai-${minion.id}-${Date.now()}`;
           onMinionResponse({ id: tempMessageId, channelId, senderType: MessageSender.AI, senderName: minion.name, content: "", timestamp: Date.now(), isProcessing: true, senderRole: 'standard' });
-          const responseGenPrompt = RESPONSE_GENERATION_PROMPT_TEMPLATE(minion.name, minion.system_prompt_persona, dynamicChatHistory, plan, undefined);
+          
+          const isFirstMessage = !minion.chatColor;
+          const otherMinionColors = this.minionConfigs
+            .filter(m => m.id !== minion.id && m.chatColor && m.fontColor)
+            .map(m => ({ name: m.name, chatColor: m.chatColor!, fontColor: m.fontColor! }));
+
+          const responseGenPrompt = RESPONSE_GENERATION_PROMPT_TEMPLATE(
+            minion.name,
+            minion.system_prompt_persona,
+            dynamicChatHistory,
+            plan,
+            undefined, // toolOutput
+            isFirstMessage,
+            otherMinionColors,
+            '#FAFAFA' // Correct background color
+          );
           const keyInfo = this._selectApiKey(minion);
           await this.runStreamingResponse(channelId, tempMessageId, minion, plan, responseGenPrompt, keyInfo, onMinionResponse, onMinionResponseChunk, onSystemMessage);
           
@@ -573,7 +660,22 @@ class LegionApiService {
               (chunk, isFinal) => { // onStreamChunk
                   if (!isFinal) { accumulatedContent += chunk; onMinionResponseChunk(channelId, messageId, chunk); }
                   else {
-                      const finalContent = accumulatedContent.trim();
+                      let finalContent = accumulatedContent.trim();
+                      const colorTagRegex = /<colors\s+chatColor=\"([^\"]+)\"\s+fontColor=\"([^\"]+)\"\s*\/>/;
+                      const match = finalContent.match(colorTagRegex);
+
+                      if (match) {
+                          const chatColor = match[1];
+                          const fontColor = match[2];
+                          
+                          const minionToUpdate = this.minionConfigs.find(m => m.id === minion.id);
+                          if (minionToUpdate) {
+                              const updatedMinion = { ...minionToUpdate, chatColor, fontColor };
+                              this.updateMinion(updatedMinion);
+                          }
+                          finalContent = finalContent.replace(colorTagRegex, '').trim();
+                      }
+
                       const finalMessage: ChatMessageData = { id: messageId, channelId, senderType: MessageSender.AI, senderName: minion.name, content: finalContent, timestamp: Date.now(), internalDiary: plan, isProcessing: false, senderRole: 'standard' };
                       onMinionResponse(finalMessage); this.updateMinionState(minion.id, plan);
                       const msgIndex = (this.messages[channelId] || []).findIndex(m => m.id === messageId);
@@ -595,8 +697,8 @@ class LegionApiService {
       if (minionIndex > -1) { this.minionConfigs[minionIndex].opinionScores = plan.finalOpinions; this.minionConfigs[minionIndex].lastDiaryState = plan; }
   }
 
-  async deleteMessage(channelId: string, messageId: string): Promise<void> { this.messages[channelId] = (this.messages[channelId] || []).filter(m => m.id !== messageId); this.saveState(); }
-  async editMessage(channelId: string, messageId: string, newContent: string): Promise<void> { this.messages[channelId] = (this.messages[channelId] || []).map(m => m.id === messageId ? { ...m, content: newContent } : m); this.saveState(); }
+  async deleteMessage(channelId: string, messageId: string): Promise<void> { this.messages[channelId] = (this.messages[channelId] || []).filter(m => m.id !== messageId); this.saveMessages(); }
+  async editMessage(channelId: string, messageId: string, newContent: string): Promise<void> { this.messages[channelId] = (this.messages[channelId] || []).map(m => m.id === messageId ? { ...m, content: newContent } : m); this.saveMessages(); }
   
   async getAnalyticsData(minionId: string, startDate: number, endDate: number) {
       const minion = this.minionConfigs.find(m => m.id === minionId);
@@ -611,12 +713,27 @@ class LegionApiService {
           totalTokens: historicalRequests.reduce((sum, r) => sum + r.totalTokens, 0),
       };
 
-      // Get current usage stats and quotas using the same logic as the roster panel
-      const minionWithStats = this._getMinionWithStats(minion);
+      // ON-DEMAND STATS CALCULATION
+      const quotas = this.modelQuotas[minion.model_id];
+      let currentUsage = { rpm: 0, tpm: 0, rpd: 0 };
+
+      if (quotas) {
+        const now = Date.now(), oneMinAgo = now - 6e4, oneDayAgo = now - 864e5;
+        let requests = minion.usageStats.requests;
+        if (quotas.sharedPool) {
+          if (!this.sharedPoolUsage[quotas.sharedPool]) this.sharedPoolUsage[quotas.sharedPool] = { requests: [] };
+          requests = this.minionConfigs.filter(m => this.modelQuotas[m.model_id]?.sharedPool === quotas.sharedPool).flatMap(m => m.usageStats.requests);
+        }
+        const requestsLastMinute = requests.filter(r => r.timestamp > oneMinAgo);
+        const requestsLastDay = requests.filter(r => r.timestamp > oneDayAgo);
+        currentUsage.rpm = requestsLastMinute.length;
+        currentUsage.tpm = requestsLastMinute.reduce((s, r) => s + r.totalTokens, 0);
+        currentUsage.rpd = requestsLastDay.length;
+      }
 
       return {
-          currentUsage: minionWithStats.currentUsage,
-          quotas: minionWithStats.quotas,
+          currentUsage: currentUsage,
+          quotas: quotas,
           cumulativeStats: cumulativeStats,
       };
   }

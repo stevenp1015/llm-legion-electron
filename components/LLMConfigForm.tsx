@@ -49,6 +49,7 @@ const MinionConfigForm: React.FC<MinionConfigFormProps> = ({
   const [newPresetName, setNewPresetName] = useState('');
   const [isRefreshingModels, setIsRefreshingModels] = useState(false);
   const [availableMcpTools, setAvailableMcpTools] = useState<McpTool[]>([]);
+  const [openServers, setOpenServers] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     const defaultModelId = modelOptions.length > 0 ? modelOptions[0].id : '';
@@ -60,9 +61,9 @@ const MinionConfigForm: React.FC<MinionConfigFormProps> = ({
         setSelectedDropdownModel('custom-model-entry');
       }
       setConfig(prev => ({
-        mcpTools: [], // Ensure mcpTools is initialized
         ...prev, 
-        ...initialConfig
+        ...initialConfig,
+        mcpTools: initialConfig.mcpTools || [], // Ensure mcpTools is initialized
       }));
     } else {
         // Reset to default for new minion
@@ -74,7 +75,7 @@ const MinionConfigForm: React.FC<MinionConfigFormProps> = ({
             params: { temperature: 0.7 },
             opinionScores: {}, usageStats: { requests: [] }, status: 'Pending Configuration',
             regulationInterval: 10,
-            mcpTools: [],
+            mcpTools: [], // Will be populated by the tool fetcher
         };
         setConfig(defaultConfig);
         setSelectedDropdownModel(defaultConfig.model_id);
@@ -82,16 +83,26 @@ const MinionConfigForm: React.FC<MinionConfigFormProps> = ({
   }, [initialConfig, modelOptions]);
 
   useEffect(() => {
-    const fetchTools = async () => {
+    const fetchAndSetTools = async () => {
       if (mcpElectronService.isElectronAvailable()) {
         const servers = await mcpElectronService.getAvailableTools(config.id);
         const allTools = servers.flatMap(server => 
           server.tools.map(tool => ({ ...tool, serverId: server.serverId, serverName: server.serverName }))
         );
         setAvailableMcpTools(allTools);
+
+        // If this is a new minion, enable all tools by default.
+        if (!initialConfig) {
+          const allToolNames = allTools.map(t => ({ toolName: t.name }));
+          setConfig(prev => ({ ...prev, mcpTools: allToolNames }));
+        }
       }
     };
-    fetchTools();
+    fetchAndSetTools();
+    // Disabling exhaustive-deps because we only want this to run once on mount,
+    // or when the minion ID changes (which forces a remount anyway).
+    // Adding initialConfig would cause it to re-run and overwrite user selections.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config.id]);
 
 
@@ -154,6 +165,32 @@ const MinionConfigForm: React.FC<MinionConfigFormProps> = ({
         } else {
             return { ...prev, mcpTools: [...currentTools, { toolName }] };
         }
+    });
+  };
+
+  const toggleServer = (serverName: string) => {
+    setOpenServers(prev => ({ ...prev, [serverName]: !prev[serverName] }));
+  };
+
+  const handleToggleServerTools = (tools: McpTool[]) => {
+    const serverToolNames = tools.map(t => t.name);
+    const currentSelectedTools = config.mcpTools?.map(t => t.toolName) || [];
+    
+    const allSelected = serverToolNames.every(name => currentSelectedTools.includes(name));
+
+    setConfig(prev => {
+        let newSelectedTools;
+        if (allSelected) {
+            // Deselect all tools from this server
+            newSelectedTools = (prev.mcpTools || []).filter(t => !serverToolNames.includes(t.toolName));
+        } else {
+            // Select all tools from this server, avoiding duplicates
+            const toolsToAdd = serverToolNames
+                .filter(name => !currentSelectedTools.includes(name))
+                .map(name => ({ toolName: name }));
+            newSelectedTools = [...(prev.mcpTools || []), ...toolsToAdd];
+        }
+        return { ...prev, mcpTools: newSelectedTools };
     });
   };
   
@@ -267,29 +304,62 @@ const MinionConfigForm: React.FC<MinionConfigFormProps> = ({
          </div>
       )}
 
-      {config.role === 'standard' && availableMcpTools.length > 0 && (
-         <div className="p-4 border border-gray-300 rounded-md bg-gray-100/70">
-            <label className="block text-sm font-medium text-gray-700 mb-2">Available MCP Tools</label>
-            <div className="space-y-2 max-h-32 overflow-y-auto pr-2">
-                {availableMcpTools.map(tool => (
-                    <div key={`${tool.serverId}-${tool.name}`} className="flex items-center">
-                        <input
-                            type="checkbox"
-                            id={`tool-${tool.name}`}
-                            checked={config.mcpTools?.some(t => t.toolName === tool.name) || false}
-                            onChange={() => handleToggleMcpTool(tool.name)}
-                            className="h-4 w-4 rounded border-gray-400 text-amber-600 focus:ring-amber-500"
-                        />
-                        <label htmlFor={`tool-${tool.name}`} className="ml-2 text-sm text-gray-700">
-                            <span className="font-semibold">{tool.name}</span>
-                            <span className="text-gray-500 ml-2">({tool.serverName})</span>
-                            {tool.description && <p className="text-xs text-gray-500">{tool.description}</p>}
-                        </label>
-                    </div>
-                ))}
+      {config.role === 'standard' && availableMcpTools.length > 0 && (() => {
+        const toolsByServer = availableMcpTools.reduce<Record<string, McpTool[]>>((acc, tool) => {
+            const serverName = tool.serverName || 'Unknown Server';
+            if (!acc[serverName]) acc[serverName] = [];
+            acc[serverName].push(tool);
+            return acc;
+        }, {});
+
+        return (
+            <div className="p-4 border border-gray-300 rounded-md bg-gray-100/70">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Available MCP Tools</label>
+                <div className="space-y-1 max-h-48 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-neutral-400 scrollbar-track-zinc-200">
+                    {Object.entries(toolsByServer).map(([serverName, tools]) => {
+                        const serverToolNames = tools.map(t => t.name);
+                        const selectedInServer = (config.mcpTools || []).filter(t => serverToolNames.includes(t.toolName));
+                        const allSelected = selectedInServer.length === serverToolNames.length;
+                        const someSelected = selectedInServer.length > 0 && !allSelected;
+
+                        return (
+                            <div key={serverName}>
+                                <div className="flex items-center p-1 rounded-md hover:bg-gray-200/70 transition-colors">
+                                    <input
+                                        type="checkbox"
+                                        ref={el => { if (el) { el.indeterminate = someSelected; } }}
+                                        checked={allSelected}
+                                        onChange={() => handleToggleServerTools(tools)}
+                                        className="h-4 w-4 rounded border-gray-400 text-amber-600 focus:ring-amber-500"
+                                    />
+                                    <div onClick={() => toggleServer(serverName)} className="flex-grow flex items-center cursor-pointer ml-2">
+                                        <ToolIcon className={`w-4 h-4 mr-2 transition-transform duration-200 ${openServers[serverName] ? 'rotate-90' : ''}`} />
+                                        <span className="font-semibold text-gray-800">{serverName}</span>
+                                    </div>
+                                </div>
+                                {openServers[serverName] && (
+                                    <div className="pl-8 mt-1 space-y-1 border-l-2 border-gray-300 ml-2">
+                                        {tools.map(tool => (
+                                            <div key={tool.name} className="flex items-center" title={tool.description || ''}>
+                                                <input
+                                                    type="checkbox"
+                                                    id={`tool-${tool.name}`}
+                                                    checked={config.mcpTools?.some(t => t.toolName === tool.name) || false}
+                                                    onChange={() => handleToggleMcpTool(tool.name)}
+                                                    className="h-4 w-4 rounded border-gray-400 text-amber-600 focus:ring-amber-500"
+                                                />
+                                                <label htmlFor={`tool-${tool.name}`} className="ml-2 text-sm text-gray-700">{tool.name}</label>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
             </div>
-         </div>
-      )}
+        );
+      })()}
 
 
       <div>

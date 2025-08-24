@@ -1,8 +1,10 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { MinionConfig, ChatMessageData, MessageSender, Channel, ChannelPayload, ApiKey, PromptPreset, ModelOption } from './types';
-import ChatMessage from './components/ChatMessage';
+import VirtualMessageList from './components/VirtualMessageList';
 import ChatInput from './components/ChatInput';
 import MinionsPanel from './components/ConfigPanel';
+import Modal from './components/Modal';
+import MinionConfigForm from './components/LLMConfigForm';
 import ChannelList from './components/ChannelList';
 import AutoChatControls from './components/AutoChatControls';
 import AnalyticsDashboard from './components/AnalyticsDashboard';
@@ -23,6 +25,8 @@ const App: React.FC = () => {
   
   const [isServiceInitialized, setIsServiceInitialized] = useState(false);
   const [isMinionsPanelOpen, setIsMinionsPanelOpen] = useState(false);
+  const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
+  const [editingMinion, setEditingMinion] = useState<MinionConfig | undefined>(undefined);
   const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
   const [isMcpManagerOpen, setIsMcpManagerOpen] = useState(false);
   const [isProcessingMessage, setIsProcessingMessage] = useState(false);
@@ -32,8 +36,6 @@ const App: React.FC = () => {
   const chatHistoryRef = useRef<HTMLDivElement>(null);
   const autoChatTimeoutRef = useRef<number | null>(null);
   const service = useRef(legionApiService).current;
-// Inside App.tsx, around line 35
-  const [isChannelSwitching, setIsChannelSwitching] = useState(false);
 
   // --- Data Loading and Persistence ---
   const loadInitialData = useCallback(async () => {
@@ -88,7 +90,7 @@ const App: React.FC = () => {
       
       const statsInterval = setInterval(async () => {
         setMinionConfigs(await service.getMinions());
-      }, 5000);
+      }, 60000);
       
       return () => {
         if (autoChatTimeoutRef.current) clearTimeout(autoChatTimeoutRef.current);
@@ -99,9 +101,14 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (isAutoScrollEnabled && chatHistoryRef.current) {
-      chatHistoryRef.current.scrollTop = chatHistoryRef.current.scrollHeight;
+      // Use requestAnimationFrame to batch DOM updates
+      requestAnimationFrame(() => {
+        if (chatHistoryRef.current) {
+          chatHistoryRef.current.scrollTop = chatHistoryRef.current.scrollHeight;
+        }
+      });
     }
-  }, [messages, activeMinionProcessors, isAutoScrollEnabled]);
+  }, [messages[currentChannelId || ''], isAutoScrollEnabled]); // Only trigger on current channel messages
 
   useEffect(() => {
     if (currentChannelId) {
@@ -120,12 +127,73 @@ const App: React.FC = () => {
   // --- Minion Management ---
   const addMinionConfig = async (config: MinionConfig) => { await service.addMinion(config); setMinionConfigs(await service.getMinions()); setChannels(await service.getChannels()); };
   const updateMinionConfig = async (updatedConfig: MinionConfig) => { await service.updateMinion(updatedConfig); setMinionConfigs(await service.getMinions()); setChannels(await service.getChannels()); };
+  
+  const handleOpenEditMinion = (minion: MinionConfig) => {
+    setEditingMinion(minion);
+    setIsConfigModalOpen(true);
+  };
+
+  const handleOpenAddNewMinion = () => {
+    setEditingMinion(undefined);
+    setIsConfigModalOpen(true);
+  };
+
+  const handleSaveConfig = (config: MinionConfig) => {
+    if (editingMinion) {
+      updateMinionConfig(config);
+    } else {
+      addMinionConfig(config);
+    }
+    setIsConfigModalOpen(false);
+    setEditingMinion(undefined);
+  };
   const deleteMinionConfig = async (id: string) => { await service.deleteMinion(id); setMinionConfigs(await service.getMinions()); setChannels(await service.getChannels()); };
 
   // --- Message Management ---
   const handleMessageUpdate = useCallback((channelId: string, messageId: string, updates: Partial<ChatMessageData>) => { setMessages(prev => ({ ...prev, [channelId]: (prev[channelId] || []).map(m => m.id === messageId ? { ...m, ...updates } : m) })); }, []);
   const handleMessageAdd = useCallback((channelId: string, message: ChatMessageData) => { setMessages(prev => ({ ...prev, [channelId]: [...(prev[channelId] || []), message] })); }, []);
-  const handleMessageChunk = useCallback((channelId: string, messageId: string, chunk: string) => { setMessages(prev => ({ ...prev, [channelId]: (prev[channelId] || []).map(m => m.id === messageId ? { ...m, content: m.content + chunk } : m)})); }, []);
+  const chunkQueue = useRef<Map<string, string[]>>(new Map());
+  const isProcessingQueue = useRef<Map<string, boolean>>(new Map());
+
+  const processChunkQueue = useCallback((channelId: string, messageId: string) => {
+    const messageKey = `${channelId}-${messageId}`;
+    const queue = chunkQueue.current.get(messageKey);
+
+    if (!queue || queue.length === 0) {
+      isProcessingQueue.current.set(messageKey, false);
+      return;
+    }
+
+    const aggregatedChunk = queue.join('');
+    chunkQueue.current.set(messageKey, []); 
+
+    setMessages(prev => {
+      const newMessages = { ...prev };
+      const channelMessages = (newMessages[channelId] || []).map(m => {
+        if (m.id === messageId) {
+          return { ...m, content: m.content + aggregatedChunk };
+        }
+        return m;
+      });
+      newMessages[channelId] = channelMessages;
+      return newMessages;
+    });
+
+    requestAnimationFrame(() => processChunkQueue(channelId, messageId));
+  }, []);
+
+  const handleMessageChunk = useCallback((channelId: string, messageId: string, chunk: string) => {
+    const messageKey = `${channelId}-${messageId}`;
+    if (!chunkQueue.current.has(messageKey)) {
+      chunkQueue.current.set(messageKey, []);
+    }
+    chunkQueue.current.get(messageKey)!.push(chunk);
+
+    if (!isProcessingQueue.current.get(messageKey)) {
+      isProcessingQueue.current.set(messageKey, true);
+      requestAnimationFrame(() => processChunkQueue(channelId, messageId));
+    }
+  }, [processChunkQueue]);
   const handleMessageUpsert = useCallback((message: ChatMessageData) => {
      setMessages(prevMessages => {
         const channelMessages = prevMessages[message.channelId] || [];
@@ -139,8 +207,26 @@ const App: React.FC = () => {
         }
      });
   }, []);
-  const deleteMessageFromChannel = async (channelId: string, messageId: string) => { await service.deleteMessage(channelId, messageId); setMessages(prev => ({...prev, [channelId]: (prev[channelId] || []).filter(m => m.id !== messageId) })); };
-  const editMessageContent = async (channelId: string, messageId: string, newContent: string) => { await service.editMessage(channelId, messageId, newContent); handleMessageUpdate(channelId, messageId, { content: newContent }); };
+
+  const handleToolUpdate = useCallback((updatedMessage: ChatMessageData) => {
+    setMessages(prev => {
+      const newMessages = { ...prev };
+      const channelMessages = (newMessages[updatedMessage.channelId] || []).map(m => 
+        m.id === updatedMessage.id ? updatedMessage : m
+      );
+      newMessages[updatedMessage.channelId] = channelMessages;
+      return newMessages;
+    });
+  }, []);
+  const deleteMessageFromChannel = useCallback(async (channelId: string, messageId: string) => { 
+    await service.deleteMessage(channelId, messageId); 
+    setMessages(prev => ({...prev, [channelId]: (prev[channelId] || []).filter(m => m.id !== messageId) })); 
+  }, [service]);
+
+  const editMessageContent = useCallback(async (channelId: string, messageId: string, newContent: string) => { 
+    await service.editMessage(channelId, messageId, newContent); 
+    handleMessageUpdate(channelId, messageId, { content: newContent }); 
+  }, [service, handleMessageUpdate]);
   
   // --- Channel Management ---
 // Replace the existing selectChannel function in App.tsx
@@ -148,25 +234,17 @@ const App: React.FC = () => {
       // Don't do a goddamn thing if we're not actually changing channels.
       if (channelId === currentChannelId) return;
 
-      // STEP 1: Begin the fade-out.
-      setIsChannelSwitching(true);
-
-      // Give the CSS 200ms to do its sexy little fade-out.
-      setTimeout(async () => {
-          if (autoChatTimeoutRef.current) clearTimeout(autoChatTimeoutRef.current);
-          
-          // This is your original logic to load messages for the new channel.
-          if (!messages[channelId]) {
-              const channelMessages = await service.getMessages(channelId);
-              setMessages(prev => ({...prev, [channelId]: channelMessages}));
-          }
-          
-          // STEP 2: Now that it's invisible, swap the channel content.
-          setCurrentChannelId(channelId);
-          
-          // STEP 3: Flip the state back to trigger the fade-in.
-          setIsChannelSwitching(false);
-      }, 500); // This duration MUST match your CSS transition duration.
+      // Clear any auto-chat timeouts
+      if (autoChatTimeoutRef.current) clearTimeout(autoChatTimeoutRef.current);
+      
+      // Load messages for the new channel if not already loaded
+      if (!messages[channelId]) {
+          const channelMessages = await service.getMessages(channelId);
+          setMessages(prev => ({...prev, [channelId]: channelMessages}));
+      }
+      
+      // Just switch the channel immediately
+      setCurrentChannelId(channelId);
   };
   const handleAddOrUpdateChannel = async (channelData: ChannelPayload) => { await service.addOrUpdateChannel(channelData); setChannels(await service.getChannels()); };
 
@@ -183,6 +261,7 @@ const App: React.FC = () => {
       onMinionProcessingUpdate: (minionName, isProcessing) => { setActiveMinionProcessors(prev => ({ ...prev, [minionName]: isProcessing })); },
       onSystemMessage: (systemMessage) => handleMessageAdd(systemMessage.channelId, systemMessage),
       onRegulatorReport: (reportMsg) => handleMessageAdd(reportMsg.channelId, reportMsg),
+      onToolUpdate: handleToolUpdate,
     });
 
     setIsProcessingMessage(false);
@@ -191,8 +270,12 @@ const App: React.FC = () => {
   const handleSendMessage = async (userInput: string) => {
     if (!currentChannelId || isProcessingMessage) return;
     const userMessage: ChatMessageData = {
-      id: `user-${Date.now()}`, channelId: currentChannelId, senderType: MessageSender.User,
-      senderName: LEGION_COMMANDER_NAME, content: userInput, timestamp: Date.now(),
+      id: `user-${Date.now()}`,
+      channelId: currentChannelId,
+      senderType: MessageSender.User,
+      senderName: LEGION_COMMANDER_NAME,
+      content: userInput,
+      timestamp: Date.now(),
     };
     handleMessageAdd(currentChannelId, userMessage);
     await processAndDispatchMessage(currentChannelId, userMessage);
@@ -208,7 +291,8 @@ const App: React.FC = () => {
         handleMessageChunk,
         (minionName, isProcessing) => { setActiveMinionProcessors(prev => ({ ...prev, [minionName]: isProcessing })); },
         (systemMessage) => handleMessageAdd(systemMessage.channelId, systemMessage),
-        (msg) => handleMessageAdd(msg.channelId, msg) // for regulator reports
+        (msg) => handleMessageAdd(msg.channelId, msg), // for regulator reports
+        handleToolUpdate
     );
     setIsProcessingMessage(false);
   }, [currentChannelId, isProcessingMessage, handleMessageUpsert, handleMessageChunk, handleMessageAdd]);
@@ -244,17 +328,28 @@ const App: React.FC = () => {
   const currentChannelMessages = messages[currentChannelId || ''] || [];
   const allMinionNames = minionConfigs.map(m => m.name);
 
+  // Memoize the minion config map. This is the magic.
+  // It only recalculates when minionConfigs changes, not on every render.
+  // And yes, BAE, this automatically handles new minions you create.
+  const minionConfigMap = useMemo(() => {
+    const map = new Map<string, MinionConfig>();
+    for (const config of minionConfigs) {
+      map.set(config.name, config);
+    }
+    return map;
+  }, [minionConfigs]);
+
   const processingMinionNames = Object.entries(activeMinionProcessors)
     .filter(([name, isProcessing]) => isProcessing && currentChannel?.members.includes(name))
     .map(([name]) => name);
 
   return (
-    <div className="h-screen w-screen flex flex-col bg-zinc-50 text-neutral-600 selection:bg-amber-300 selection:text-neutral-900 overflow-hidden">
-      <header className="p-3 bg-zinc-50/80 backdrop-blur-sm border-b border-zinc-200 shadow-sm flex items-center justify-between flex-shrink-0 z-20 electron-drag">
-        <div className="flex items-center gap-3 select-none">
+    <div className="h-screen w-screen flex flex-col bg-gradient-to-tl from-zinc-100 to-zinc-50 overflow-hidden text-neutral-600 selection:bg-amber-300 selection:text-neutral-900 overflow-hidden">
+      <header className="p-3 bg-zinc-100/100 backdrop-blur-sm border-b border-zinc-200 shadow-sm flex items-center justify-between flex-shrink-0 z-20 electron-drag">
+        <div className="flex ml-20 items-center gap-3 select-none">
           <img src="https://picsum.photos/seed/legionicon/40/40" alt="Legion Icon" className="w-10 h-10 rounded-full ring-2 ring-amber-500" />
           <div>
-            <h1 className="text-xl font-bold text-neutral-800">{APP_TITLE}</h1>
+            <h1 className="text-xl font-semibold text-neutral-800">{APP_TITLE}</h1>
             <p className="text-xs text-amber-600">Commander: {LEGION_COMMANDER_NAME}</p>
           </div>
         </div>
@@ -302,14 +397,47 @@ const App: React.FC = () => {
               </div>
                 <div
                   ref={chatHistoryRef}
-                  className={`flex-1 p-4 space-y-2 overflow-y-auto scrollbar-thin scrollbar-thumb-neutral-400 scrollbar-track-zinc-200 transition-opacity duration-500 ${isChannelSwitching ? 'opacity-0' : 'opacity-100'}`}
-                >                
-                {currentChannelMessages.length === 0 && (<div className="text-center text-neutral-500 pt-10"><p>No messages in <span className="font-semibold">{currentChannel.name}</span> yet.</p></div>)}
-                {currentChannelMessages.map(msg => (<ChatMessage key={msg.id} message={msg} onDelete={deleteMessageFromChannel} onEdit={editMessageContent} isProcessing={msg.isProcessing}/> ))}
+                  className={`flex-1 p-4 space-y-2 overflow-y-auto scrollbar-thin scrollbar-thumb-neutral-400 scrollbar-track-zinc-200`}
+                >
+                <LayoutGroup>
+                <AnimatePresence>
+                {currentChannelMessages.map(msg => (
+                  <ChatMessage 
+                    key={msg.id} 
+                    message={msg} 
+                    minionConfig={minionConfigMap.get(msg.senderName)} 
+                    channelType={currentChannel?.type} 
+                    onDelete={deleteMessageFromChannel} 
+                    onEdit={editMessageContent} 
+                    isProcessing={msg.isProcessing}
+                  />
+                ))}
                  {processingMinionNames
                     .filter(name => !currentChannelMessages.some(m => m.senderName === name && m.isProcessing))
-                    .map(name => (<ChatMessage key={`proc-${name}`} message={{ id: `proc-${name}`, channelId: currentChannelId!, senderName: name, senderType: MessageSender.AI, content: '', timestamp: Date.now(), isProcessing: true, senderRole: minionConfigs.find(m => m.name === name)?.role || 'standard' }} onDelete={()=>{}} onEdit={()=>{}} />
-                    ))}
+                    .map(name => {
+                      const minionConfig = minionConfigMap.get(name);
+                      const message = { 
+                        id: `proc-${name}`, 
+                        channelId: currentChannelId!, 
+                        senderName: name, 
+                        senderType: MessageSender.AI, 
+                        content: '', 
+                        timestamp: Date.now(), 
+                        isProcessing: true, 
+                        senderRole: minionConfig?.role || 'standard' 
+                      };
+                      return (
+                        <ChatMessage 
+                          key={message.id} 
+                          message={message} 
+                          minionConfig={minionConfig}
+                          onDelete={()=>{}} 
+                          onEdit={()=>{}} 
+                        />
+                      );
+                    })}
+                </AnimatePresence>
+                </LayoutGroup>
               </div>
               <ChatInput onSendMessage={handleSendMessage} isSending={isProcessingMessage} disabled={currentChannel.type === 'minion_minion_auto' && currentChannel.isAutoModeActive} />
             </>
@@ -321,14 +449,33 @@ const App: React.FC = () => {
         </main>
 
         <MinionsPanel 
-            minionConfigs={minionConfigs} apiKeys={apiKeys} promptPresets={promptPresets}
-            modelOptions={modelOptions}
-            onAddMinion={addMinionConfig} onUpdateMinion={updateMinionConfig} onDeleteMinion={deleteMinionConfig} 
+            minionConfigs={minionConfigs} apiKeys={apiKeys}
+            onDeleteMinion={deleteMinionConfig} 
             onAddApiKey={handleAddApiKey} onDeleteApiKey={handleDeleteApiKey}
-            onAddPreset={handleAddPreset} onDeletePreset={handleDeletePreset}
-            onRefreshModels={handleRefreshModels}
             isOpen={isMinionsPanelOpen} onToggle={() => setIsMinionsPanelOpen(p => !p)} 
+            onEditMinion={handleOpenEditMinion}
+            onAddNewMinion={handleOpenAddNewMinion}
         />
+
+        <Modal
+          isOpen={isConfigModalOpen}
+          onClose={() => setIsConfigModalOpen(false)}
+          title={editingMinion ? `Configure Minion: ${editingMinion.name}` : 'Deploy New Minion'}
+          size="2xl"
+        >
+          <MinionConfigForm
+            initialConfig={editingMinion}
+            onSave={handleSaveConfig}
+            onCancel={() => setIsConfigModalOpen(false)}
+            existingNames={minionConfigs.map(c => c.name).filter(name => !editingMinion || name !== editingMinion.name)}
+            apiKeys={apiKeys}
+            promptPresets={promptPresets}
+            modelOptions={modelOptions}
+            onAddPreset={handleAddPreset}
+            onDeletePreset={handleDeletePreset}
+            onRefreshModels={handleRefreshModels}
+          />
+        </Modal>
 
         <AnalyticsDashboard
           isOpen={isAnalyticsOpen}

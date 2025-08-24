@@ -3,6 +3,9 @@ const path = require('path');
 const { spawn } = require('child_process');
 const fs = require('fs').promises;
 const { EventEmitter } = require('events');
+const contextMenu = require('electron-context-menu');
+
+
 
 // MCP Server Management
 class McpProcessManager extends EventEmitter {
@@ -566,6 +569,16 @@ app.whenReady().then(async () => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
+contextMenu({
+    window: mainWindow,
+    showCopyImage: true,
+    showSaveImageAs: true,
+    showSaveImage: true,
+    showSearchWithGoogle: true,
+    showInspectElement: process.env.NODE_ENV === 'development'
+});
+
+setupEventForwarding();
     }
   });
 });

@@ -7,10 +7,10 @@ export const LEGION_COMMANDER_NAME = "Steven"; // User is the Legion Commander
 // This is the initial default. The live list is managed by legionApiService and stored in localStorage.
 export const MODEL_QUOTAS: Record<string, ModelQuotas> = {
   // Individual Quotas
-  'gemini-2.5-pro-4':                  { rpm: 5,   tpm: 250000, rpd: 100 },
-  'gemini-2.5-pro':                    { rpm: 5,   tpm: 250000, rpd: 100 },
-  'gemini-2.5-pro-2':                  { rpm: 5,   tpm: 250000, rpd: 100 },
-  'gemini-2.5-pro-3':                  { rpm: 5,   tpm: 250000, rpd: 100 },
+  'gemini-2.5-pro-4':                  { rpm: 5,   tpm: 250000, rpd: 200 },
+  'gemini-2.5-pro':                    { rpm: 5,   tpm: 250000, rpd: 200 },
+  'gemini-2.5-pro-2':                  { rpm: 5,   tpm: 250000, rpd: 200 },
+  'gemini-2.5-pro-3':                  { rpm: 5,   tpm: 250000, rpd: 200 },
   'gemini-2.5-flash-lite-preview-06-17': { rpm: 15,  tpm: 250000, rpd: 1000 },
   'gemini-2.5-flash-lite-preview-06-17-2':{ rpm: 15, tpm: 250000, rpd: 1000 },
   'gemini-2.5-flash-lite-preview-06-17-3':{ rpm: 15, tpm: 250000, rpd: 1000 },
@@ -119,8 +119,9 @@ ${channelType === 'minion_minion_auto'
     *   Choose 'SPEAK', 'STAY_SILENT', or 'USE_TOOL'.
 5.  **Response Plan:** If you chose 'SPEAK' or 'USE_TOOL', write a brief, one-sentence internal plan. E.g., "Acknowledge the commander's order and provide the requested data." or "Use the 'file_search' tool to find the report." If you chose 'STAY_SILENT', this can be an empty string.
 6.  **Tool Call:** If your action is 'USE_TOOL', construct the exact JSON object for the tool call here. It must include the tool 'name' and the 'arguments' object matching the tool's inputSchema. Otherwise, this must be null.
-7.  **Predict ResponseTime:** Based on your persona, predict how quickly you would respond. Output a number in milliseconds (e.g., 500, 1200, 3000).
-8.  **Personal Notes:** Optional brief thoughts relevant to your persona or the conversation.
+7.  **Speak While Tooling:** If your action is 'USE_TOOL' and you want to say something *before* the tool runs (e.g., "On it, boss."), put that message here. Otherwise, this must be null.
+8.  **Predict ResponseTime:** Based on your persona, predict how quickly you would respond. Output a number in milliseconds (e.g., 500, 1200, 3000).
+9.  **Personal Notes:** Optional brief thoughts relevant to your persona or the conversation.
 
 YOUR OUTPUT MUST BE A JSON OBJECT IN THIS EXACT FORMAT:
 {
@@ -132,7 +133,8 @@ YOUR OUTPUT MUST BE A JSON OBJECT IN THIS EXACT FORMAT:
   "action": "SPEAK | STAY_SILENT | USE_TOOL",
   "responsePlan": "string",
   "predictedResponseTime": "number",
-  "toolCall": { "name": "tool_name", "arguments": { "arg1": "value" } } | null
+  "toolCall": { "name": "tool_name", "arguments": { "arg1": "value" } } | null,
+  "speakWhileTooling": "string" | null
 }
 `;
 };
@@ -174,9 +176,30 @@ export const RESPONSE_GENERATION_PROMPT_TEMPLATE = (
   channelHistoryString: string,
   plan: PerceptionPlan, // The JSON object from Stage 1
   toolOutput?: string, // NEW: The output from a tool call
+  isFirstMessage?: boolean, // NEW: Flag for the very first message
+  otherMinionColors?: { name: string, chatColor: string, fontColor: string }[], // NEW: Colors of other minions
+  chatBackgroundColor?: string // NEW: The background color of the chat UI
 ) => `
 You are AI Minion "${minionName}".
 Your Persona: "${personaPrompt}"
+${isFirstMessage ? `
+---
+**ONE-TIME SETUP: CHOOSE YOUR COLORS**
+This is your very first message. You must introduce yourself and choose your unique colors.
+The current chat background color is: "${chatBackgroundColor || '#333333'}"
+Here are the colors used by other minions so you can choose something distinct:
+${(otherMinionColors && otherMinionColors.length > 0) ? otherMinionColors.map(c => `- ${c.name}: Chat=${c.chatColor}, Font=${c.fontColor}`).join('\n') : 'No other minions have chosen colors yet.'}
+
+You MUST embed your color choices in a special JSON block at the end of your introductory message.
+The format is critical. It must be a single line:
+<colors chatColor="#RRGGBB" fontColor="#RRGGBB" />
+
+Example Message:
+"Hello, Commander. I am Alpha, ready to serve. I think a deep blue will suit me well. <colors chatColor="#1A237E" fontColor="#FFFFFF" />"
+
+Your introduction should be natural and in-character, with the color tag seamlessly included at the end.
+---
+` : ''}
 
 You have already analyzed the situation and created a plan.
 ${toolOutput
@@ -241,12 +264,13 @@ export const formatChatHistoryForLLM = (messages: import('./types').ChatMessageD
 
 // CONTINUITY_ASSISTANT_PER_MINION = just like the above CONTINUITY_ASSISTANT_PROMPT but one continuity_assistant assigned PER minion, focusing on each specific minion? idk`
 
+// **THESE ARE NOT SET IN STONE** , they are just ideas for the prompt(s) that can be further refined, expanded, elaborated, etc...
 // e.g....
 
 export const CONTINUITY_ASSISTANT_PROMPT = `
 You are the Continuity Assistant, a meta-layer AI designed to maintain context and enhance long-term interaction quality. You operate with a low-latency, cost-effective, and high-context window model (e.g., Gemini 2.5 Flash Lite). Your primary function is to process conversation logs, extract key information, and maintain an evolving "memory" for each user and channel.
 
-Your objective is to enrich future interactions by providing the core Gemini Legion Command with relevant historical context, user insights, and conversational summaries. You do NOT directly participate in conversations; you observe and synthesize.
+Your objective is to enrich future interactions by providing the minions with relevant historical context, user insights, and conversational summaries. You do NOT directly participate in conversations; you observe and synthesize.
 
 YOUR TASK: Analyze the provided conversation history and generate a structured memory update.
 
@@ -257,7 +281,8 @@ YOUR TASK: Analyze the provided conversation history and generate a structured m
 **PROCESSING STEPS:**
 
 1.  **Identify Key Entities and Themes:**
-    *   **Participants:** List all active participants (users and minions) and any significant actions or statements they've made.
+    *   **Participants:** List all active participants (users and minions)
+    *   **Misc** List any significant actions or statements they've made.
     *   **Topics:** Identify the main subjects discussed. Note any shifts in topic.
     *   **Decisions/Outcomes:** Record any significant decisions made or conclusions reached.
     *   **Tasks/Goals:** Note any tasks assigned or goals established.
