@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { MinionConfig, ChatMessageData, MessageSender, Channel, ChannelPayload, ApiKey, PromptPreset, ModelOption } from './types';
-import VirtualMessageList from './components/VirtualMessageList';
+import { MinionConfig, ChatMessageData, Channel, ChannelPayload, ApiKey, PromptPreset, ModelOption, MessageSender } from './types';
+import ChatMessage from './components/ChatMessage';
+import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import ChatInput from './components/ChatInput';
 import MinionsPanel from './components/ConfigPanel';
 import Modal from './components/Modal';
@@ -17,6 +18,8 @@ import legionApiService from './services/legionApiService';
 const App: React.FC = () => {
   const [minionConfigs, setMinionConfigs] = useState<MinionConfig[]>([]);
   const [messages, setMessages] = useState<Record<string, ChatMessageData[]>>({});
+  const [hasMoreMessages, setHasMoreMessages] = useState<Record<string, boolean>>({});
+  const chatHistoryRef = useRef<HTMLDivElement | null>(null);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [currentChannelId, setCurrentChannelId] = useState<string | null>(null);
   const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
@@ -33,7 +36,6 @@ const App: React.FC = () => {
   const [isAutoScrollEnabled, setIsAutoScrollEnabled] = useState(true);
   const [activeMinionProcessors, setActiveMinionProcessors] = useState<Record<string, boolean>>({});
 
-  const chatHistoryRef = useRef<HTMLDivElement>(null);
   const autoChatTimeoutRef = useRef<number | null>(null);
   const service = useRef(legionApiService).current;
 
@@ -89,7 +91,26 @@ const App: React.FC = () => {
       loadInitialData();
       
       const statsInterval = setInterval(async () => {
-        setMinionConfigs(await service.getMinions());
+        const newConfigs = await service.getMinions();
+        // Use a more robust comparison to prevent unnecessary re-renders
+        setMinionConfigs(prev => {
+          // Quick length check first
+          if (prev.length !== newConfigs.length) return newConfigs;
+          
+          // Deep comparison of relevant fields that would affect UI
+          const hasChanged = prev.some((prevConfig, index) => {
+            const newConfig = newConfigs[index];
+            return !newConfig || 
+                   prevConfig.id !== newConfig.id ||
+                   prevConfig.name !== newConfig.name ||
+                   prevConfig.role !== newConfig.role ||
+                   prevConfig.chatColor !== newConfig.chatColor ||
+                   prevConfig.fontColor !== newConfig.fontColor ||
+                   JSON.stringify(prevConfig.stats) !== JSON.stringify(newConfig.stats);
+          });
+          
+          return hasChanged ? newConfigs : prev;
+        });
       }, 60000);
       
       return () => {
@@ -99,16 +120,19 @@ const App: React.FC = () => {
     }
   }, [isServiceInitialized, loadInitialData]);
 
+  // Auto-scroll effect for chat history
   useEffect(() => {
-    if (isAutoScrollEnabled && chatHistoryRef.current) {
-      // Use requestAnimationFrame to batch DOM updates
-      requestAnimationFrame(() => {
-        if (chatHistoryRef.current) {
-          chatHistoryRef.current.scrollTop = chatHistoryRef.current.scrollHeight;
-        }
-      });
+    if (isAutoScrollEnabled && chatHistoryRef.current && currentChannelId) {
+      const currentMessages = messages[currentChannelId] || [];
+      if (currentMessages.length > 0) {
+        requestAnimationFrame(() => {
+          if (chatHistoryRef.current) {
+            chatHistoryRef.current.scrollTop = chatHistoryRef.current.scrollHeight;
+          }
+        });
+      }
     }
-  }, [messages[currentChannelId || ''], isAutoScrollEnabled]); // Only trigger on current channel messages
+  }, [messages[currentChannelId || ''], isAutoScrollEnabled, currentChannelId]);
 
   useEffect(() => {
     if (currentChannelId) {
@@ -151,7 +175,14 @@ const App: React.FC = () => {
 
   // --- Message Management ---
   const handleMessageUpdate = useCallback((channelId: string, messageId: string, updates: Partial<ChatMessageData>) => { setMessages(prev => ({ ...prev, [channelId]: (prev[channelId] || []).map(m => m.id === messageId ? { ...m, ...updates } : m) })); }, []);
-  const handleMessageAdd = useCallback((channelId: string, message: ChatMessageData) => { setMessages(prev => ({ ...prev, [channelId]: [...(prev[channelId] || []), message] })); }, []);
+  const handleMessageAdd = useCallback((channelId: string, message: ChatMessageData) => { 
+    setMessages(prev => ({ ...prev, [channelId]: [...(prev[channelId] || []), message] })); 
+    // Cleanup old messages periodically to prevent memory bloat - throttled to every 10 messages
+    const currentMessages = messages[channelId] || [];
+    if (currentMessages.length % 10 === 0) {
+      requestAnimationFrame(() => service.cleanupOldMessages(channelId, 500));
+    }
+  }, [service, messages]);
   const chunkQueue = useRef<Map<string, string[]>>(new Map());
   const isProcessingQueue = useRef<Map<string, boolean>>(new Map());
 
@@ -161,6 +192,9 @@ const App: React.FC = () => {
 
     if (!queue || queue.length === 0) {
       isProcessingQueue.current.set(messageKey, false);
+      // Clean up the queue entry when done processing
+      chunkQueue.current.delete(messageKey);
+      isProcessingQueue.current.delete(messageKey);
       return;
     }
 
@@ -227,9 +261,50 @@ const App: React.FC = () => {
     await service.editMessage(channelId, messageId, newContent); 
     handleMessageUpdate(channelId, messageId, { content: newContent }); 
   }, [service, handleMessageUpdate]);
+
+  // Load more messages when scrolling up
+  const loadMoreMessages = useCallback(async () => {
+    if (!currentChannelId || !hasMoreMessages[currentChannelId]) return;
+    
+    const currentMessages = messages[currentChannelId] || [];
+    if (currentMessages.length === 0) return;
+    
+    const oldestMessage = currentMessages[0];
+    const result = await service.getMessages(currentChannelId, 50, oldestMessage.id);
+    
+    if (result.messages.length > 0) {
+      const scrollElement = chatHistoryRef.current;
+      const previousScrollHeight = scrollElement?.scrollHeight || 0;
+      
+      setMessages(prev => ({
+        ...prev, 
+        [currentChannelId]: [...result.messages, ...prev[currentChannelId]]
+      }));
+      
+      // Maintain scroll position after loading older messages
+      requestAnimationFrame(() => {
+        if (scrollElement) {
+          const newScrollHeight = scrollElement.scrollHeight;
+          scrollElement.scrollTop = newScrollHeight - previousScrollHeight;
+        }
+      });
+    }
+    
+    setHasMoreMessages(prev => ({
+      ...prev, 
+      [currentChannelId]: result.hasMore
+    }));
+  }, [currentChannelId, hasMoreMessages, messages, service]);
+  
+  // Handle scroll events for infinite scroll
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const element = e.currentTarget;
+    if (element.scrollTop === 0 && hasMoreMessages[currentChannelId || '']) {
+      loadMoreMessages();
+    }
+  }, [loadMoreMessages, hasMoreMessages, currentChannelId]);
   
   // --- Channel Management ---
-// Replace the existing selectChannel function in App.tsx
   const selectChannel = async (channelId: string) => {
       // Don't do a goddamn thing if we're not actually changing channels.
       if (channelId === currentChannelId) return;
@@ -237,10 +312,16 @@ const App: React.FC = () => {
       // Clear any auto-chat timeouts
       if (autoChatTimeoutRef.current) clearTimeout(autoChatTimeoutRef.current);
       
+      // Cleanup old messages from the previous channel to free memory
+      if (currentChannelId) {
+        requestAnimationFrame(() => service.cleanupOldMessages(currentChannelId, 500));
+      }
+      
       // Load messages for the new channel if not already loaded
       if (!messages[channelId]) {
-          const channelMessages = await service.getMessages(channelId);
-          setMessages(prev => ({...prev, [channelId]: channelMessages}));
+          const result = await service.getMessages(channelId, 50); // Load last 50 messages
+          setMessages(prev => ({...prev, [channelId]: result.messages}));
+          setHasMoreMessages(prev => ({...prev, [channelId]: result.hasMore}));
       }
       
       // Just switch the channel immediately
@@ -328,20 +409,22 @@ const App: React.FC = () => {
   const currentChannelMessages = messages[currentChannelId || ''] || [];
   const allMinionNames = minionConfigs.map(m => m.name);
 
-  // Memoize the minion config map. This is the magic.
-  // It only recalculates when minionConfigs changes, not on every render.
-  // And yes, BAE, this automatically handles new minions you create.
+  // Memoize the minion config map with stable dependencies to prevent unnecessary recalculation
   const minionConfigMap = useMemo(() => {
     const map = new Map<string, MinionConfig>();
     for (const config of minionConfigs) {
       map.set(config.name, config);
     }
     return map;
-  }, [minionConfigs]);
+  }, [minionConfigs.map(c => `${c.id}-${c.name}-${c.chatColor}-${c.fontColor}`).join('|')]);
 
-  const processingMinionNames = Object.entries(activeMinionProcessors)
-    .filter(([name, isProcessing]) => isProcessing && currentChannel?.members.includes(name))
-    .map(([name]) => name);
+  // Memoize processing minion names to prevent recalculation on every render
+  const processingMinionNames = useMemo(() => {
+    return Object.entries(activeMinionProcessors)
+      .filter(([name, isProcessing]) => isProcessing && currentChannel?.members.includes(name))
+      .map(([name]) => name);
+  }, [activeMinionProcessors, currentChannel?.members]);
+
 
   return (
     <div className="h-screen w-screen flex flex-col bg-gradient-to-tl from-zinc-100 to-zinc-50 overflow-hidden text-neutral-600 selection:bg-amber-300 selection:text-neutral-900 overflow-hidden">
@@ -395,48 +478,35 @@ const App: React.FC = () => {
                   </div>
                 )}
               </div>
-                <div
-                  ref={chatHistoryRef}
-                  className={`flex-1 p-4 space-y-2 overflow-y-auto scrollbar-thin scrollbar-thumb-neutral-400 scrollbar-track-zinc-200`}
-                >
+              <div 
+                ref={chatHistoryRef}
+                className="flex-1 overflow-y-auto p-4 space-y-3"
+                onScroll={handleScroll}
+              >
+                {hasMoreMessages[currentChannelId || ''] && (
+                  <div className="text-center py-2">
+                    <button 
+                      onClick={loadMoreMessages}
+                      className="px-3 py-1 text-sm text-neutral-500 hover:text-neutral-700 transition-colors"
+                    >
+                      Load older messages...
+                    </button>
+                  </div>
+                )}
                 <LayoutGroup>
-                <AnimatePresence>
-                {currentChannelMessages.map(msg => (
-                  <ChatMessage 
-                    key={msg.id} 
-                    message={msg} 
-                    minionConfig={minionConfigMap.get(msg.senderName)} 
-                    channelType={currentChannel?.type} 
-                    onDelete={deleteMessageFromChannel} 
-                    onEdit={editMessageContent} 
-                    isProcessing={msg.isProcessing}
-                  />
-                ))}
-                 {processingMinionNames
-                    .filter(name => !currentChannelMessages.some(m => m.senderName === name && m.isProcessing))
-                    .map(name => {
-                      const minionConfig = minionConfigMap.get(name);
-                      const message = { 
-                        id: `proc-${name}`, 
-                        channelId: currentChannelId!, 
-                        senderName: name, 
-                        senderType: MessageSender.AI, 
-                        content: '', 
-                        timestamp: Date.now(), 
-                        isProcessing: true, 
-                        senderRole: minionConfig?.role || 'standard' 
-                      };
-                      return (
-                        <ChatMessage 
-                          key={message.id} 
-                          message={message} 
-                          minionConfig={minionConfig}
-                          onDelete={()=>{}} 
-                          onEdit={()=>{}} 
-                        />
-                      );
-                    })}
-                </AnimatePresence>
+                  <AnimatePresence initial={false}>
+                    {currentChannelMessages.map((message) => (
+                      <ChatMessage
+                        key={message.id}
+                        message={message}
+                        minionConfig={minionConfigMap.get(message.senderName)}
+                        channelType={currentChannel?.type}
+                        onDelete={() => deleteMessageFromChannel(message.channelId, message.id)}
+                        onEdit={(content) => editMessageContent(message.channelId, message.id, content)}
+                        isProcessing={processingMinionNames.includes(message.senderName)}
+                      />
+                    ))}
+                  </AnimatePresence>
                 </LayoutGroup>
               </div>
               <ChatInput onSendMessage={handleSendMessage} isSending={isProcessingMessage} disabled={currentChannel.type === 'minion_minion_auto' && currentChannel.isAutoModeActive} />

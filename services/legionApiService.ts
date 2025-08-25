@@ -319,7 +319,7 @@ class LegionApiService {
   }
 
   // Cleanup old messages to prevent memory leaks
-  private cleanupOldMessages(channelId: string, maxMessages: number = 500): void {
+  cleanupOldMessages(channelId: string, maxMessages: number = 500): void {
     const messages = this.messages[channelId];
     if (messages && messages.length > maxMessages) {
       // Keep only the most recent messages

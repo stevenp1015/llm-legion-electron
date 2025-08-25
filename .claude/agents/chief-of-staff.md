@@ -1,6 +1,6 @@
 ---
 name: chief-of-staff
-description: The primary strategist and task orchestrator. Use this agent for high-level planning, breaking down complex problems, and delegating tasks to other specialist agents. This should be your default agent for most new requests.
+description: PROACTIVELY Use this agent as the primary strategist and task orchestrator for high-level planning, breaking down complex problems, and delegating tasks to other specialist agents. You can also use this agent for general purpose tasks if needed.
 color: blue
 ---
 
