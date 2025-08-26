@@ -377,4 +377,49 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, minionConfig, channe
   );
 };
 
-export default React.memo(ChatMessage);
+// Custom comparison function to prevent unnecessary re-renders
+const areEqual = (prevProps: ChatMessageProps, nextProps: ChatMessageProps) => {
+  // Compare message data (most important)
+  if (
+    prevProps.message.id !== nextProps.message.id ||
+    prevProps.message.content !== nextProps.message.content ||
+    prevProps.message.timestamp !== nextProps.message.timestamp ||
+    prevProps.message.isProcessing !== nextProps.message.isProcessing ||
+    prevProps.message.isError !== nextProps.message.isError ||
+    prevProps.message.senderName !== nextProps.message.senderName ||
+    prevProps.message.senderType !== nextProps.message.senderType
+  ) {
+    return false;
+  }
+
+  // Compare processing state
+  if (prevProps.isProcessing !== nextProps.isProcessing) {
+    return false;
+  }
+
+  // Compare channel type
+  if (prevProps.channelType !== nextProps.channelType) {
+    return false;
+  }
+
+  // Compare minion config (only relevant fields)
+  const prevConfig = prevProps.minionConfig;
+  const nextConfig = nextProps.minionConfig;
+  
+  if (prevConfig?.id !== nextConfig?.id ||
+      prevConfig?.name !== nextConfig?.name ||
+      prevConfig?.chatColor !== nextConfig?.chatColor ||
+      prevConfig?.fontColor !== nextConfig?.fontColor) {
+    return false;
+  }
+
+  // Compare function references (though these should be stable with useCallback)
+  if (prevProps.onDelete !== nextProps.onDelete || prevProps.onEdit !== nextProps.onEdit) {
+    return false;
+  }
+
+  // If we made it here, props are equal enough
+  return true;
+};
+
+export default React.memo(ChatMessage, areEqual);
