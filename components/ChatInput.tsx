@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { PaperAirplaneIcon } from './Icons';
+import { getAnimationConfig, ANIMATION_VARIANTS } from '../animations/config';
 
 interface ChatInputProps {
   onSendMessage: (content: string) => void;
@@ -15,10 +17,13 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isSending, disable
     if (inputValue.trim() && !isSending && !disabled) {
       onSendMessage(inputValue.trim());
       setInputValue('');
-      if (textareaRef.current) {
-        textareaRef.current.style.height = 'auto'; // Reset height
-        textareaRef.current.focus();
-      }
+      // Maintain height stability during submit
+      requestAnimationFrame(() => {
+        if (textareaRef.current) {
+          textareaRef.current.style.height = '30px'; // Fixed reset height
+          textareaRef.current.focus();
+        }
+      });
     }
   };
 
@@ -31,10 +36,16 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isSending, disable
 
   const handleTextareaInput = (event: React.FormEvent<HTMLTextAreaElement>) => {
     setInputValue(event.currentTarget.value);
-    if (textareaRef.current) {
-      textareaRef.current.style.height = '20px';
-      textareaRef.current.style.height = `${event.currentTarget.scrollHeight}px`;
-    }
+    // Smoother height adjustment
+    requestAnimationFrame(() => {
+      if (textareaRef.current) {
+        const target = event.currentTarget;
+        const minHeight = 30;
+        const maxHeight = 120; // Limit max height
+        const newHeight = Math.min(Math.max(target.scrollHeight, minHeight), maxHeight);
+        textareaRef.current.style.height = `${newHeight}px`;
+      }
+    });
   };
   
   useEffect(() => {
@@ -58,21 +69,99 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isSending, disable
           rows={1}
           disabled={disabled}
         />
-        <button
+        <motion.button
           onClick={handleSubmit}
           disabled={isSending || !inputValue.trim() || disabled}
-          className="p-2.5 bg-amber-500 text-white rounded-lg hover:bg-amber-600 disabled:bg-amber-700/30 disabled:cursor-not-allowed transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500"
+          className="p-2.5 bg-amber-500 text-white rounded-lg focus:outline-none relative overflow-hidden"
           aria-label="Send message"
+          variants={ANIMATION_VARIANTS.button}
+          initial="idle"
+          whileHover={!(isSending || !inputValue.trim() || disabled) ? "hover" : undefined}
+          whileTap={!(isSending || !inputValue.trim() || disabled) ? "tap" : undefined}
+          animate={{
+            backgroundColor: disabled 
+              ? 'rgba(245, 158, 11, 0.3)' 
+              : isSending 
+                ? 'rgb(217, 119, 6)' 
+                : 'rgb(245, 158, 11)',
+            boxShadow: disabled 
+              ? 'none'
+              : isSending
+                ? '0 0 0 2px rgba(245, 158, 11, 0.3), 0 0 20px rgba(245, 158, 11, 0.2)'
+                : '0 2px 4px rgba(0,0,0,0.1)'
+          }}
+          whileHover={{
+            backgroundColor: disabled ? undefined : 'rgb(217, 119, 6)',
+            boxShadow: disabled ? undefined : '0 4px 12px rgba(245, 158, 11, 0.3)',
+            ...ANIMATION_VARIANTS.button.hover
+          }}
+          transition={getAnimationConfig('haptic')}
         >
-          {isSending ? (
-            <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-          ) : (
-            <PaperAirplaneIcon className="w-5 h-5" />
+          {/* Loading shimmer effect */}
+          {isSending && (
+            <motion.div
+              className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent"
+              initial={{ x: '-100%' }}
+              animate={{ x: '100%' }}
+              transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+            />
           )}
-        </button>
+          
+          <AnimatePresence mode="wait">
+            {isSending ? (
+              <motion.div
+                key="sending"
+                initial={{ opacity: 0, rotate: -90, scale: 0.8 }}
+                animate={{ 
+                  opacity: 1, 
+                  rotate: 0, 
+                  scale: 1,
+                }}
+                exit={{ opacity: 0, rotate: 90, scale: 0.8 }}
+                transition={getAnimationConfig('stiff')}
+                className="flex items-center justify-center"
+              >
+                {/* Custom loading dots instead of boring spinner */}
+                <div className="flex space-x-1">
+                  {[0, 1, 2].map((index) => (
+                    <motion.div
+                      key={index}
+                      className="w-1.5 h-1.5 bg-white rounded-full"
+                      animate={{
+                        scale: [1, 1.3, 1],
+                        opacity: [0.6, 1, 0.6]
+                      }}
+                      transition={{
+                        duration: 0.8,
+                        repeat: Infinity,
+                        delay: index * 0.15,
+                        ease: 'easeInOut'
+                      }}
+                    />
+                  ))}
+                </div>
+              </motion.div>
+            ) : (
+              <motion.div
+                key="send"
+                initial={{ opacity: 0, rotate: 90, scale: 0.8 }}
+                animate={{ 
+                  opacity: 1, 
+                  rotate: 0, 
+                  scale: 1 
+                }}
+                exit={{ opacity: 0, rotate: -90, scale: 0.8 }}
+                transition={getAnimationConfig('stiff')}
+                whileHover={{ 
+                  rotate: -10,
+                  scale: 1.1
+                }}
+              >
+                <PaperAirplaneIcon className="w-5 h-5" />
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </motion.button>
       </div>
     </div>
   );

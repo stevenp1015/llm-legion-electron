@@ -10,7 +10,7 @@ import RegulatorReportCard from './RegulatorReportCard';
 import { parseJsonFromMarkdown } from '../services/geminiService';
 import MinionIcon from './MinionIcon';
 import StreamingText from './StreamingText';
-import { getAnimationConfig } from '../animations/config';
+import { getAnimationConfig, ANIMATION_VARIANTS } from '../animations/config';
 
 const DiaryCard: React.FC<{ diary: any }> = ({ diary }) => {
   const renderOpinionUpdates = () => (
@@ -213,12 +213,25 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, minionConfig, channe
   
   if (isSystem) {
     const style = message.isError 
-      ? "px-4 py-2 text-center text-xs text-red-600 bg-red-100" 
-      : "px-4 py-2 text-center text-xs text-neutral-500";
+      ? "px-4 py-2 text-center text-xs text-red-600 bg-red-100 rounded-md" 
+      : "px-4 py-2 text-center text-xs text-neutral-500 bg-neutral-100/50 rounded-md";
       
     return (
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className={style}>
-        <span className="italic">{message.content}</span>
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.9, y: 10 }} 
+        animate={{ opacity: 1, scale: 1, y: 0 }} 
+        exit={{ opacity: 0, scale: 0.9, y: -5 }}
+        transition={getAnimationConfig('gentle')}
+        className={style}
+      >
+        <motion.span 
+          className="italic"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.1 }}
+        >
+          {message.content}
+        </motion.span>
       </motion.div>
     );
   }
@@ -257,17 +270,56 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, minionConfig, channe
   if (isMinion && isProcessing && message.content.trim() === '') {
     return (
       <motion.div 
-        initial={{ opacity: 0, y: 10 }} 
-        animate={{ opacity: 1, y: 0 }} 
-        exit={{ opacity: 0, y: -10 }} 
-        transition={getAnimationConfig('gentle')}
+        variants={ANIMATION_VARIANTS.messageEntry}
+        initial="hidden"
+        animate="visible" 
+        exit="exit"
+        layout={false}
         className="flex items-end gap-3 p-3">
-        <div className="flex-shrink-0">{avatar}</div>
+        <motion.div 
+          className="flex-shrink-0"
+          initial={{ scale: 0.8, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ delay: 0.1, ...getAnimationConfig('bouncy') }}
+        >
+          {avatar}
+        </motion.div>
         <div className={`w-full max-w-[70%] flex flex-col items-start`}>
-            <span className="text-xs text-neutral-500 ml-2 mb-0.5">{message.senderName}</span>
-            <div className={`relative px-4 py-2 rounded-xl shadow bg-zinc-100 text-neutral-800 rounded-bl-none border border-zinc-200`}>
-                 <TypingIndicator />
-            </div>
+            <motion.span 
+              className="text-xs text-neutral-500 ml-2 mb-0.5"
+              initial={{ opacity: 0, y: 5 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2, ...getAnimationConfig('gentle') }}
+            >
+              {message.senderName}
+            </motion.span>
+            <motion.div 
+              className={`relative px-4 py-2 rounded-xl shadow bg-zinc-100 text-neutral-800 rounded-bl-none border border-zinc-200 overflow-hidden`}
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ 
+                scale: 1, 
+                opacity: 1,
+                boxShadow: [
+                  '0 1px 3px rgba(0,0,0,0.1)',
+                  '0 2px 6px rgba(0,0,0,0.15)',
+                  '0 1px 3px rgba(0,0,0,0.1)'
+                ]
+              }}
+              transition={{ 
+                delay: 0.3, 
+                ...getAnimationConfig('slide'),
+                boxShadow: { duration: 2, repeat: Infinity, repeatType: 'reverse' }
+              }}
+            >
+              {/* Subtle shimmer effect while typing */}
+              <motion.div
+                className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent"
+                initial={{ x: '-100%' }}
+                animate={{ x: '100%' }}
+                transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
+              />
+              <TypingIndicator />
+            </motion.div>
         </div>
       </motion.div>
     );
@@ -277,12 +329,22 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, minionConfig, channe
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20, scale: 0.95 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, y: -10, scale: 0.95 }}
-      transition={getAnimationConfig('gentle')}
+      variants={ANIMATION_VARIANTS.messageEntry}
+      initial="hidden"
+      animate="visible"
+      exit="exit"
+      layout={false}
       className={`flex items-end gap-3 p-3 ${isUser ? 'justify-end' : ''}`}>
-      {!isUser && <div className="flex-shrink-0 self-end">{avatar}</div>}
+      {!isUser && (
+        <motion.div 
+          className="flex-shrink-0 self-end"
+          initial={{ scale: 0.8, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ delay: 0.1, ...getAnimationConfig('bouncy') }}
+        >
+          {avatar}
+        </motion.div>
+      )}
       
       <div className={`w-full max-w-[80%] flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>
         <div className="relative group/message w-full">
@@ -304,22 +366,91 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, minionConfig, channe
               )}
             </AnimatePresence>
 
-          <div 
-            className={`absolute top-0 z-10 flex items-center gap-2 transition-opacity duration-150 ${ isUser ? 'flex-row-reverse left-0 -translate-x-full pr-2' : 'flex-row right-0 translate-x-full pl-2'} ${isEditing ? 'opacity-0' : 'opacity-0 group-hover/message:opacity-100'}`}>
+          <motion.div 
+            className={`absolute top-0 z-10 flex items-center gap-2 ${ isUser ? 'flex-row-reverse left-0 -translate-x-full pr-2' : 'flex-row right-0 translate-x-full pl-2'}`}
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ 
+              opacity: isEditing ? 0 : 0,
+              scale: isEditing ? 0.8 : 1 
+            }}
+            whileInView={{
+              opacity: isEditing ? 0 : 1
+            }}
+            transition={getAnimationConfig('haptic')}
+          >
               {isUser && (
-                <button onClick={() => setIsEditing(true)} className="p-1 text-neutral-400 hover:text-amber-500" title="Edit">
-                  <PencilIcon className="w-4 h-4" />
-                </button>
+                <motion.button 
+                  onClick={() => setIsEditing(true)} 
+                  className="p-1 text-neutral-400 rounded"
+                  title="Edit"
+                  variants={ANIMATION_VARIANTS.button}
+                  initial="idle"
+                  whileHover="hover"
+                  whileTap="tap"
+                  whileHover={{
+                    color: 'rgb(245, 158, 11)',
+                    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                    ...ANIMATION_VARIANTS.button.hover
+                  }}
+                >
+                  <motion.div
+                    animate={{ rotate: 0 }}
+                    whileHover={{ rotate: 15 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    <PencilIcon className="w-4 h-4" />
+                  </motion.div>
+                </motion.button>
               )}
               {isMinion && !isRegulator && message.internalDiary && (
-                <button onClick={() => setShowDiary(!showDiary)} className="p-1 text-neutral-400 hover:text-teal-500" title={`Toggle ${message.senderName}'s Diary`}>
-                  <BookOpenIcon className="w-4 h-4" />
-                </button>
+                <motion.button 
+                  onClick={() => setShowDiary(!showDiary)} 
+                  className="p-1 text-neutral-400 rounded"
+                  title={`Toggle ${message.senderName}'s Diary`}
+                  variants={ANIMATION_VARIANTS.button}
+                  initial="idle"
+                  whileHover="hover"
+                  whileTap="tap"
+                  whileHover={{
+                    color: 'rgb(20, 184, 166)',
+                    backgroundColor: 'rgba(20, 184, 166, 0.1)',
+                    ...ANIMATION_VARIANTS.button.hover
+                  }}
+                  animate={{
+                    color: showDiary ? 'rgb(20, 184, 166)' : 'rgb(163, 163, 163)'
+                  }}
+                >
+                  <motion.div
+                    animate={{ rotate: showDiary ? 180 : 0 }}
+                    transition={{ duration: 0.3, ease: 'easeOut' }}
+                  >
+                    <BookOpenIcon className="w-4 h-4" />
+                  </motion.div>
+                </motion.button>
               )}
-              <button onClick={() => onDelete(message.channelId, message.id)} className="p-1 text-neutral-400 hover:text-red-500" title="Delete">
-                <TrashIcon className="w-4 h-4" />
-              </button>
-          </div>
+              <motion.button 
+                onClick={() => onDelete(message.channelId, message.id)} 
+                className="p-1 text-neutral-400 rounded"
+                title="Delete"
+                variants={ANIMATION_VARIANTS.button}
+                initial="idle"
+                whileHover="hover"
+                whileTap="tap"
+                whileHover={{
+                  color: 'rgb(239, 68, 68)',
+                  backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                  ...ANIMATION_VARIANTS.button.hover
+                }}
+              >
+                <motion.div
+                  animate={{ rotate: 0 }}
+                  whileHover={{ rotate: [0, -10, 10, -5, 0] }}
+                  transition={{ duration: 0.4 }}
+                >
+                  <TrashIcon className="w-4 h-4" />
+                </motion.div>
+              </motion.button>
+          </motion.div>
 
           <div style={bubbleStyle} className={getBubbleClasses()}>
             <div className="flex items-center justify-between mb-1">
@@ -338,14 +469,53 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, minionConfig, channe
                   className="w-full p-2 text-sm bg-zinc-100 text-neutral-900 border border-zinc-300 rounded-md resize-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none"
                   rows={3}
                 />
-                <div className="flex justify-end gap-2 mt-2">
-                  <button onClick={handleCancelEdit} className="px-3 py-1 text-xs bg-neutral-400 hover:bg-neutral-500 text-white rounded-md transition-colors">
-                    <XMarkIcon className="w-4 h-4"/>
-                  </button>
-                  <button onClick={handleEdit} className="px-3 py-1 text-xs bg-amber-500 hover:bg-amber-600 text-white rounded-md transition-colors">
-                    <SaveIcon className="w-4 h-4"/>
-                  </button>
-                </div>
+                <motion.div 
+                  className="flex justify-end gap-2 mt-2"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.1, ...getAnimationConfig('gentle') }}
+                >
+                  <motion.button 
+                    onClick={handleCancelEdit} 
+                    className="px-3 py-1 text-xs bg-neutral-400 text-white rounded-md"
+                    variants={ANIMATION_VARIANTS.button}
+                    initial="idle"
+                    whileHover="hover"
+                    whileTap="tap"
+                    whileHover={{
+                      backgroundColor: 'rgb(115, 115, 115)',
+                      ...ANIMATION_VARIANTS.button.hover
+                    }}
+                  >
+                    <motion.div
+                      animate={{ rotate: 0 }}
+                      whileHover={{ rotate: 90 }}
+                      transition={{ duration: 0.2 }}
+                    >
+                      <XMarkIcon className="w-4 h-4"/>
+                    </motion.div>
+                  </motion.button>
+                  <motion.button 
+                    onClick={handleEdit} 
+                    className="px-3 py-1 text-xs bg-amber-500 text-white rounded-md"
+                    variants={ANIMATION_VARIANTS.button}
+                    initial="idle"
+                    whileHover="hover"
+                    whileTap="tap"
+                    whileHover={{
+                      backgroundColor: 'rgb(217, 119, 6)',
+                      ...ANIMATION_VARIANTS.button.hover
+                    }}
+                  >
+                    <motion.div
+                      animate={{ scale: 1 }}
+                      whileHover={{ scale: [1, 0.9, 1.1, 1] }}
+                      transition={{ duration: 0.3 }}
+                    >
+                      <SaveIcon className="w-4 h-4"/>
+                    </motion.div>
+                  </motion.button>
+                </motion.div>
               </div>
             ) : (
               <div className={getContentClasses()}>
@@ -372,53 +542,54 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, minionConfig, channe
         </div>
       </div>
 
-      {isUser && <div className="flex-shrink-0 self-end">{avatar}</div>}
+      {isUser && (
+        <motion.div 
+          className="flex-shrink-0 self-end"
+          initial={{ scale: 0.8, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ delay: 0.1, ...getAnimationConfig('bouncy') }}
+        >
+          {avatar}
+        </motion.div>
+      )}
     </motion.div>
   );
 };
 
 // Custom comparison function to prevent unnecessary re-renders
 const areEqual = (prevProps: ChatMessageProps, nextProps: ChatMessageProps) => {
-  // Compare message data (most important)
+  const prev = prevProps.message;
+  const next = nextProps.message;
+  
+  // Fast path: if it's the same message object, skip deep comparison
+  if (prev === next && prevProps.isProcessing === nextProps.isProcessing) {
+    return true;
+  }
+  
+  // Critical fields that affect rendering
   if (
-    prevProps.message.id !== nextProps.message.id ||
-    prevProps.message.content !== nextProps.message.content ||
-    prevProps.message.timestamp !== nextProps.message.timestamp ||
-    prevProps.message.isProcessing !== nextProps.message.isProcessing ||
-    prevProps.message.isError !== nextProps.message.isError ||
-    prevProps.message.senderName !== nextProps.message.senderName ||
-    prevProps.message.senderType !== nextProps.message.senderType
+    prev.id !== next.id ||
+    prev.content !== next.content ||
+    prev.senderName !== next.senderName ||
+    prev.senderType !== next.senderType ||
+    prev.isError !== next.isError ||
+    prevProps.isProcessing !== nextProps.isProcessing
   ) {
     return false;
   }
-
-  // Compare processing state
-  if (prevProps.isProcessing !== nextProps.isProcessing) {
-    return false;
-  }
-
-  // Compare channel type
-  if (prevProps.channelType !== nextProps.channelType) {
-    return false;
-  }
-
-  // Compare minion config (only relevant fields)
-  const prevConfig = prevProps.minionConfig;
-  const nextConfig = nextProps.minionConfig;
   
-  if (prevConfig?.id !== nextConfig?.id ||
-      prevConfig?.name !== nextConfig?.name ||
-      prevConfig?.chatColor !== nextConfig?.chatColor ||
-      prevConfig?.fontColor !== nextConfig?.fontColor) {
-    return false;
+  // Only check minion config if it's a minion message
+  if (next.senderType === MessageSender.AI) {
+    const prevConfig = prevProps.minionConfig;
+    const nextConfig = nextProps.minionConfig;
+    
+    if (prevConfig?.chatColor !== nextConfig?.chatColor ||
+        prevConfig?.fontColor !== nextConfig?.fontColor) {
+      return false;
+    }
   }
-
-  // Compare function references (though these should be stable with useCallback)
-  if (prevProps.onDelete !== nextProps.onDelete || prevProps.onEdit !== nextProps.onEdit) {
-    return false;
-  }
-
-  // If we made it here, props are equal enough
+  
+  // Skip expensive function reference checks - they should be stable
   return true;
 };
 

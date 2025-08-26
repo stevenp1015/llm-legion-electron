@@ -188,6 +188,7 @@ const App: React.FC = () => {
       requestAnimationFrame(() => service.cleanupOldMessages(channelId, 500));
     }
   }, [messageStoreActions, service]);
+  // Throttle chunk processing to prevent excessive renders
   const handleMessageChunk = useCallback((channelId: string, messageId: string, chunk: string) => {
     messageStoreActions.processMessageChunk(channelId, messageId, chunk);
   }, [messageStoreActions]);
@@ -351,10 +352,11 @@ const App: React.FC = () => {
   // Filter processing minions for current channel (pure component logic, not selector)
   const processingMinionNames = useMemo(() => {
     const channelMembers = currentChannel?.members || [];
-    return Object.entries(activeMinionProcessors)
+    const processing = Object.entries(activeMinionProcessors)
       .filter(([name, isProcessing]) => isProcessing && channelMembers.includes(name))
       .map(([name]) => name);
-  }, [activeMinionProcessors, currentChannel?.members]);
+    return processing;
+  }, [activeMinionProcessors, currentChannel?.id]); // Use channel id instead of members array
 
   // Memoize the minion config map with stable dependencies to prevent unnecessary recalculation
   const minionConfigMap = useMemo(() => {
@@ -433,21 +435,19 @@ const App: React.FC = () => {
                     </button>
                   </div>
                 )}
-                <LayoutGroup>
-                  <AnimatePresence initial={false}>
-                    {currentChannelMessages.map((message) => (
-                      <ChatMessage
-                        key={message.id}
-                        message={message}
-                        minionConfig={minionConfigMap.get(message.senderName)}
-                        channelType={currentChannel?.type}
-                        onDelete={() => deleteMessageFromChannel(message.channelId, message.id)}
-                        onEdit={(content) => editMessageContent(message.channelId, message.id, content)}
-                        isProcessing={processingMinionNames.includes(message.senderName)}
-                      />
-                    ))}
-                  </AnimatePresence>
-                </LayoutGroup>
+                <AnimatePresence initial={false}>
+                  {currentChannelMessages.map((message) => (
+                    <ChatMessage
+                      key={message.id}
+                      message={message}
+                      minionConfig={minionConfigMap.get(message.senderName)}
+                      channelType={currentChannel?.type}
+                      onDelete={() => deleteMessageFromChannel(message.channelId, message.id)}
+                      onEdit={(content) => editMessageContent(message.channelId, message.id, content)}
+                      isProcessing={processingMinionNames.includes(message.senderName)}
+                    />
+                  ))}
+                </AnimatePresence>
               </div>
               <ChatInput onSendMessage={handleSendMessage} isSending={isProcessingMessage} disabled={currentChannel.type === 'minion_minion_auto' && currentChannel.isAutoModeActive} />
             </>
