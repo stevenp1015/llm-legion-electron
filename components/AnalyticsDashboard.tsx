@@ -112,8 +112,8 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ isOpen, onClose
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex flex-col bg-zinc-900/75 backdrop-blur-sm">
-            <header className="flex-shrink-0 p-4 bg-zinc-50/80 backdrop-blur-sm border-b border-zinc-200 flex justify-between items-center">
+        <div className="fixed inset-0 z-50 flex flex-col bg-zinc-900/75">
+            <header className="flex-shrink-0 p-4 bg-zinc-50/80 border-b border-zinc-200 flex justify-between items-center">
                 <h2 className="text-2xl font-bold text-neutral-800">Legion Analytics Dashboard</h2>
                 <button onClick={onClose} className="p-2 text-neutral-500 hover:text-neutral-800 hover:bg-zinc-200 rounded-full">
                     <XMarkIcon className="w-7 h-7" />
@@ -143,7 +143,7 @@ const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({ isOpen, onClose
 
                 <div className="space-y-4">
                     {analyticsData.map(minion => (
-                        <div key={minion.id} className={`p-4 bg-white/70 backdrop-blur-sm rounded-lg border-l-4 ${minion.role === 'regulator' ? 'border-amber-500' : 'border-teal-600'}`}>
+                        <div key={minion.id} className={`p-4 bg-white/70 rounded-lg border-l-4 ${minion.role === 'regulator' ? 'border-amber-500' : 'border-teal-600'}`}>
                              <div className="flex items-center gap-3 mb-4">
                                 <MinionIcon name={minion.name} className="w-8 h-8" />
                                 <div>

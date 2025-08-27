@@ -28,24 +28,30 @@ input, textarea, [contenteditable] {
   user-select: text;
 }
 
-/* Custom scrollbars for consistency */
+/* Custom scrollbars for a modern, auto-hiding feel */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
+/* Hide the scrollbar track completely */
 ::-webkit-scrollbar-track {
-  background: #2d3748;
+  background: transparent;
 }
 
+/* Style the scrollbar thumb */
 ::-webkit-scrollbar-thumb {
-  background: #4a5568;
+  background-color: transparent; /* Fully transparent by default */
   border-radius: 4px;
+  transition: background-color 0.3s ease-out; /* Fade out */
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: #718096;
+/* Show the thumb when the body has the .is-scrolling class */
+body.is-scrolling ::-webkit-scrollbar-thumb {
+  background-color: rgba(107, 114, 128, 0.5); /* gray-500, 50% transparent */
+  transition: background-color 0.1s ease-in; /* Fade in */
 }
+
 
 /* Electron window styling */
 .electron-drag {

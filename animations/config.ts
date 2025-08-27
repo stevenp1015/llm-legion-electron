@@ -116,25 +116,19 @@ export const ANIMATION_VARIANTS = {
   messageEntry: {
     hidden: { 
       opacity: 0, 
-      y: 20, 
-      scale: 0.9,
-      filter: 'blur(4px)'
+      scale: 1
     },
     visible: { 
       opacity: 1, 
-      y: 0, 
       scale: 1,
-      filter: 'blur(0px)',
       transition: {
-        ...getAnimationConfig('slide'),
+        ...getAnimationConfig('snappy'),
         filter: { duration: 0.3 }
       }
     },
     exit: { 
-      opacity: 0, 
-      y: -10, 
-      scale: 0.95,
-      transition: getAnimationConfig('gentle')
+      opacity: 0,
+      transition: getAnimationConfig('snappy')
     }
   },
 

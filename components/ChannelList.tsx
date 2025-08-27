@@ -47,23 +47,6 @@ const ChannelSection: React.FC<{
                                 whileTap="tap"
                                 layout
                             >
-                                {/* Hover background for inactive channels */}
-                                {!isActive && (
-                                    <motion.div
-                                        className="absolute inset-0 bg-zinc-200 rounded-md"
-                                        initial={{ opacity: 0, scale: 0.8 }}
-                                        whileHover={{ 
-                                            opacity: 1, 
-                                            scale: 1,
-                                            transition: getAnimationConfig('haptic')
-                                        }}
-                                        exit={{ 
-                                            opacity: 0, 
-                                            scale: 0.8,
-                                            transition: getAnimationConfig('snappy')
-                                        }}
-                                    />
-                                )}
                                 
                                 {/* Active background with satisfying entrance */}
                                 {isActive && (
@@ -162,7 +145,7 @@ const ChannelList: React.FC<ChannelListProps> = ({ channels, currentChannelId, o
 
     return (
         <>
-            <div className="w-64 bg-zinc-100/50 backdrop-blur-md border-r border-zinc-200 flex-shrink-0 flex flex-col">
+            <div className="w-64 bg-zinc-100/50 border-r border-zinc-200 flex-shrink-0 flex flex-col">
                 <div className="p-3 border-b border-zinc-200 flex justify-between items-center electron-drag">
                     <h2 className="text-lg font-semibold text-neutral-700">Channels</h2>
                     <motion.button 

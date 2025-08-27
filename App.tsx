@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { MinionConfig, ChatMessageData, Channel, ChannelPayload, ApiKey, PromptPreset, ModelOption, MessageSender } from './types';
 import ChatMessage from './components/ChatMessage';
-import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
+import { motion, AnimatePresence, LayoutGroup } from 'motion/react';
 import ChatInput from './components/ChatInput';
 import MinionsPanel from './components/ConfigPanel';
 import Modal from './components/Modal';
@@ -13,7 +13,8 @@ import McpServerManager from './components/McpServerManager';
 import { CogIcon, ChartBarIcon, ChevronDoubleDownIcon, ChevronUpIcon } from './components/Icons';
 import { APP_TITLE, LEGION_COMMANDER_NAME, ACTIVE_CHANNEL_STORAGE_KEY } from './constants';
 import legionApiService from './services/legionApiService';
-import { useChannelMessages, useHasMoreMessages, useProcessingState, useAutoScrollEnabled, useActiveMinionProcessors, useMessageStore } from './stores/messageStore';
+import { useChannelMessages, useHasMoreMessages, useProcessingState, useAutoScrollEnabled, useActiveMinionProcessors, useMessageStore, useSelectionMode, useSelectedMessages, useBulkDiaryVisible } from './stores/messageStore';
+import SelectionHeader from './components/SelectionHeader';
 
 
 const App: React.FC = () => {
@@ -40,8 +41,14 @@ const App: React.FC = () => {
   
   // Get store actions without subscribing to state changes
   const messageStoreActions = useRef(useMessageStore.getState()).current;
+  
+  // Selection mode state
+  const isSelectionMode = useSelectionMode();
+  const selectedMessageIds = useSelectedMessages();
+  const bulkDiaryVisible = useBulkDiaryVisible();
 
   const autoChatTimeoutRef = useRef<number | null>(null);
+  const scrollTimeoutRef = useRef<number | null>(null);
   const service = useRef(legionApiService).current;
 
   // --- Data Loading and Persistence ---
@@ -120,6 +127,7 @@ const App: React.FC = () => {
       
       return () => {
         if (autoChatTimeoutRef.current) clearTimeout(autoChatTimeoutRef.current);
+        if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
         clearInterval(statsInterval);
       };
     }
@@ -210,6 +218,44 @@ const App: React.FC = () => {
     handleMessageUpdate(channelId, messageId, { content: newContent }); 
   }, [service, handleMessageUpdate]);
 
+  // Selection mode handlers
+  const handleEnterSelectionMode = useCallback(() => {
+    messageStoreActions.toggleSelectionMode();
+  }, [messageStoreActions]);
+
+  const handleToggleSelection = useCallback((messageId: string, shiftKey: boolean) => {
+    if (shiftKey && messageStoreActions.lastSelectedMessageId) {
+      messageStoreActions.selectMessageRange(
+        messageStoreActions.lastSelectedMessageId,
+        messageId,
+        currentChannelMessages
+      );
+    } else {
+      messageStoreActions.selectMessage(messageId);
+    }
+  }, [messageStoreActions, currentChannelMessages]);
+
+  const handleDeleteSelected = useCallback(async () => {
+    if (!currentChannelId) return;
+    const selectedIds = Array.from(selectedMessageIds);
+    
+    // Delete from service first
+    await Promise.all(selectedIds.map(id => service.deleteMessage(currentChannelId, id)));
+    
+    // Then delete from store
+    messageStoreActions.deleteSelectedMessages(currentChannelId);
+  }, [currentChannelId, selectedMessageIds, service, messageStoreActions]);
+
+  const handleToggleBulkDiary = useCallback(() => {
+    const selectedIds = Array.from(selectedMessageIds);
+    messageStoreActions.toggleBulkDiary(selectedIds);
+  }, [selectedMessageIds, messageStoreActions]);
+
+  const handleExitSelectionMode = useCallback(() => {
+    messageStoreActions.toggleSelectionMode();
+    messageStoreActions.clearSelection();
+  }, [messageStoreActions]);
+
   // Load more messages when scrolling up
   const loadMoreMessages = useCallback(async () => {
     if (!currentChannelId || !hasMoreMessagesInChannel) return;
@@ -243,6 +289,15 @@ const App: React.FC = () => {
     if (element.scrollTop === 0 && hasMoreMessagesInChannel) {
       loadMoreMessages();
     }
+
+    // Show scrollbar while scrolling
+    document.body.classList.add('is-scrolling');
+    if (scrollTimeoutRef.current) {
+      clearTimeout(scrollTimeoutRef.current);
+    }
+    scrollTimeoutRef.current = window.setTimeout(() => {
+      document.body.classList.remove('is-scrolling');
+    }, 100);
   }, [loadMoreMessages, hasMoreMessagesInChannel]);
   
   // --- Channel Management ---
@@ -349,6 +404,11 @@ const App: React.FC = () => {
   const allMinionNames = minionConfigs.map(m => m.name);
   const activeMinionProcessors = useActiveMinionProcessors();
   
+  // Selection mode computed values
+  const selectedCount = selectedMessageIds.size;
+  const selectedMessages = currentChannelMessages.filter(m => selectedMessageIds.has(m.id));
+  const hasSelectedMinions = selectedMessages.some(m => m.senderType === MessageSender.AI && m.senderRole !== 'regulator');
+  
   // Filter processing minions for current channel (pure component logic, not selector)
   const processingMinionNames = useMemo(() => {
     const channelMembers = currentChannel?.members || [];
@@ -370,7 +430,7 @@ const App: React.FC = () => {
 
   return (
     <div className="h-screen w-screen flex flex-col bg-gradient-to-tl from-zinc-100 to-zinc-50 overflow-hidden text-neutral-600 selection:bg-amber-300 selection:text-neutral-900">
-      <header className="p-3 bg-zinc-100/100 backdrop-blur-sm border-b border-zinc-200 shadow-sm flex items-center justify-between flex-shrink-0 z-20 electron-drag">
+      <header className="p-3 bg-zinc-100/100 border-b border-zinc-200 shadow-sm flex items-center justify-between flex-shrink-0 z-20 electron-drag">
         <div className="flex ml-20 items-center gap-3 select-none">
           <img src="https://picsum.photos/seed/legionicon/40/40" alt="Legion Icon" className="w-10 h-10 rounded-full ring-2 ring-amber-500" />
           <div>
@@ -404,12 +464,21 @@ const App: React.FC = () => {
       </header>
 
       <div className="flex flex-1 overflow-hidden relative">
+        {/* Selection Header */}
+        <SelectionHeader
+          isVisible={isSelectionMode && selectedCount > 0}
+          selectedCount={selectedCount}
+          onDelete={handleDeleteSelected}
+          onShowDiary={handleToggleBulkDiary}
+          onDone={handleExitSelectionMode}
+          hasMinions={hasSelectedMinions}
+        />
         <ChannelList channels={channels} currentChannelId={currentChannelId} onSelectChannel={selectChannel} onAddOrUpdateChannel={handleAddOrUpdateChannel} allMinionNames={allMinionNames}/>
         
         <main className="flex-1 flex flex-col overflow-hidden">
           {currentChannel ? (
             <>
-              <div className="p-3 border-b border-zinc-200 bg-zinc-50/60 backdrop-blur-sm flex justify-between items-center electron-drag">
+              <div className="p-3 border-b border-zinc-200 bg-zinc-50/60 opacity-60 flex justify-between items-center">
                 <div className="select-none">
                   <h3 className="text-lg font-semibold text-neutral-800">{currentChannel.name}</h3>
                   <p className="text-xs text-neutral-500">{currentChannel.description}</p>
@@ -445,6 +514,11 @@ const App: React.FC = () => {
                       onDelete={() => deleteMessageFromChannel(message.channelId, message.id)}
                       onEdit={(content) => editMessageContent(message.channelId, message.id, content)}
                       isProcessing={processingMinionNames.includes(message.senderName)}
+                      isSelectionMode={isSelectionMode}
+                      isSelected={selectedMessageIds.has(message.id)}
+                      onToggleSelection={handleToggleSelection}
+                      onEnterSelectionMode={handleEnterSelectionMode}
+                      isBulkDiaryVisible={bulkDiaryVisible.has(message.id)}
                     />
                   ))}
                 </AnimatePresence>

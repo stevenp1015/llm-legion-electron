@@ -4,8 +4,19 @@ const { spawn } = require('child_process');
 const fs = require('fs').promises;
 const { EventEmitter } = require('events');
 const contextMenu = require('electron-context-menu');
+const { default: installExtension, REACT_DEVELOPER_TOOLS } = require('electron-devtools-installer');
 
-
+// Alternative manual installation function
+const installReactDevToolsManual = async () => {
+  try {
+    // Try the extension ID directly
+    const REACT_DEVTOOLS_EXTENSION_ID = 'fmkadmapgofadopljbjfkapdkoienihi';
+    await installExtension(REACT_DEVTOOLS_EXTENSION_ID);
+    console.log('🎯 React DevTools installed manually via extension ID');
+  } catch (error) {
+    console.log('❌ Manual React DevTools installation failed:', error.message);
+  }
+};
 
 // MCP Server Management
 class McpProcessManager extends EventEmitter {
@@ -288,7 +299,8 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       enableRemoteModule: false,
-      preload: path.join(__dirname, 'preload.cjs')
+      preload: path.join(__dirname, 'preload.cjs'),
+      devTools: process.env.NODE_ENV === 'development'
     },
     show: false
   });
@@ -322,6 +334,18 @@ function createWindow() {
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
+    
+    // Try installing React DevTools again after window is ready (fallback)
+    if (process.env.NODE_ENV === 'development') {
+      setTimeout(async () => {
+        try {
+          await installExtension(REACT_DEVELOPER_TOOLS);
+          console.log('🔄 React DevTools re-installed after window ready');
+        } catch (error) {
+          console.log('🤷‍♂️ DevTools already installed or failed on second attempt');
+        }
+      }, 1000);
+    }
   });
 
   // Handle external links
@@ -332,6 +356,55 @@ function createWindow() {
   mainWindow.webContents.on('will-navigate', (event, url) => {
     if (url !== mainWindow.webContents.getURL()) {
       event.preventDefault();
+    }
+  });
+
+  // Install React DevTools when DOM is ready
+  mainWindow.webContents.once('dom-ready', () => {
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🌐 DOM ready - attempting React DevTools installation...');
+      
+      setTimeout(async () => {
+        try {
+          const name = await installExtension(REACT_DEVELOPER_TOOLS);
+          console.log('🎯 React DevTools installed on DOM ready:', name);
+        } catch (error) {
+          console.log('🔄 DevTools installation on DOM ready skipped (likely already installed)');
+          // Try manual installation as fallback
+          await installReactDevToolsManual();
+        }
+        
+        // Don't auto-refresh DevTools - let user do it manually to avoid blank page issues
+      }, 500);
+    }
+  });
+
+  // Add a mechanism to manually refresh DevTools
+  mainWindow.webContents.on('did-finish-load', () => {
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🎯 Page finished loading - React DevTools should be available now');
+      
+      // Inject a script to check if React is detected
+      setTimeout(() => {
+        mainWindow.webContents.executeJavaScript(`
+          console.log('🔍 Checking React detection...');
+          console.log('React on window:', !!window.React);
+          console.log('ReactDOM on window:', !!window.ReactDOM);
+          console.log('DevTools hook:', !!window.__REACT_DEVTOOLS_GLOBAL_HOOK__);
+          
+          // Try to manually trigger DevTools detection
+          if (window.__REACT_DEVTOOLS_GLOBAL_HOOK__ && window.React) {
+            console.log('✅ Attempting manual React DevTools activation');
+            try {
+              if (window.__REACT_DEVTOOLS_GLOBAL_HOOK__.onCommitFiberRoot) {
+                console.log('🎯 DevTools hook has onCommitFiberRoot - React should be detected');
+              }
+            } catch (e) {
+              console.log('🤷‍♂️ Error checking DevTools hook:', e.message);
+            }
+          }
+        `).catch(err => console.log('Failed to execute detection script:', err));
+      }, 1000);
     }
   });
 }
@@ -565,6 +638,21 @@ app.whenReady().then(async () => {
   setupIpcHandlers();
   createWindow();
   setupEventForwarding();
+
+  // Install React DevTools in development
+  if (process.env.NODE_ENV === 'development') {
+    try {
+      const name = await installExtension(REACT_DEVELOPER_TOOLS);
+      console.log('✅ React DevTools installed successfully:', name);
+      
+      // Also log available extensions for debugging
+      const extensions = BrowserWindow.getAllWindows()[0]?.webContents.session.getAllExtensions();
+      console.log('📦 All installed extensions:', extensions);
+    } catch (error) {
+      console.error('❌ Failed to install React DevTools:', error);
+      console.error('Error details:', error.message);
+    }
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

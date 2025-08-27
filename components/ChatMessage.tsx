@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { ChatMessageData, MessageSender, RegulatorReport, MinionConfig, ToolCall } from '../types';
@@ -113,14 +113,65 @@ interface ChatMessageProps {
   channelType?: ChannelType;
   onDelete: (channelId: string, messageId: string) => void;
   onEdit: (channelId: string, messageId: string, newContent: string) => void;
-  isProcessing?: boolean; 
+  isProcessing?: boolean;
+  
+  // Selection mode props
+  isSelectionMode?: boolean;
+  isSelected?: boolean;
+  onToggleSelection?: (messageId: string, shiftKey: boolean) => void;
+  onEnterSelectionMode?: () => void;
+  isBulkDiaryVisible?: boolean;
 }
 
-const ChatMessage: React.FC<ChatMessageProps> = ({ message, minionConfig, channelType, onDelete, onEdit, isProcessing }) => {
+const ChatMessage: React.FC<ChatMessageProps> = ({ 
+  message, 
+  minionConfig, 
+  channelType, 
+  onDelete, 
+  onEdit, 
+  isProcessing,
+  isSelectionMode = false,
+  isSelected = false,
+  onToggleSelection,
+  onEnterSelectionMode,
+  isBulkDiaryVisible = false
+}) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editedContent, setEditedContent] = useState(message.content);
   const [showDiary, setShowDiary] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Use bulk diary state when in selection mode, individual state otherwise
+  const isDiaryVisible = isSelectionMode ? isBulkDiaryVisible : showDiary;
+
+  // Handle right-click on minion chat bubbles for diary toggle
+  const handleContextMenu = (e: React.MouseEvent) => {
+    if (isMinion && !isRegulator && message.internalDiary && !isSelectionMode) {
+      e.preventDefault();
+      setShowDiary(!showDiary);
+    }
+  };
+
+  // Handle avatar click to enter selection mode
+  const handleAvatarClick = () => {
+    if (!isSelectionMode && onEnterSelectionMode) {
+      onEnterSelectionMode();
+    }
+  };
+
+  // Handle bubble click in selection mode
+  const handleBubbleClick = (e: React.MouseEvent) => {
+    if (isSelectionMode && onToggleSelection) {
+      onToggleSelection(message.id, e.shiftKey);
+    }
+  };
+
+  // Handle double-click to edit user messages
+  const handleDoubleClick = () => {
+    if (isUser && !isSelectionMode) {
+      setIsEditing(true);
+    }
+  };
 
   const isUser = message.senderType === MessageSender.User;
   const isMinion = message.senderType === MessageSender.AI;
@@ -260,9 +311,51 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, minionConfig, channe
   }
 
   const avatar = isUser ? (
-    <UserCircleIcon className="w-8 h-8 text-amber-500" title={LEGION_COMMANDER_NAME} />
+    <motion.button
+      onClick={handleAvatarClick}
+      className="w-8 h-8 text-amber-500 relative"
+      title={LEGION_COMMANDER_NAME}
+      disabled={isSelectionMode}
+      whileHover={!isSelectionMode ? { scale: 1.1 } : undefined}
+      whileTap={!isSelectionMode ? { scale: 0.95 } : undefined}
+    >
+      <UserCircleIcon className="w-full h-full" />
+      {/* Selection circle for user messages */}
+      {isSelectionMode && (
+        <motion.div
+          className={`absolute -right-3 top-1/2 w-4 h-4 rounded-full border-2 transition-colors ${
+            isSelected 
+              ? 'bg-amber-500 border-amber-600' 
+              : 'bg-transparent border-amber-400'
+          }`}
+          initial={{ scale: 1, opacity: 0, y: '-50%', x: '100%' }}
+          animate={{ scale: 1, opacity: 1, y: '-50%', x: '100%' }}
+        />
+      )}
+    </motion.button>
   ) : (
-    <MinionIcon name={message.senderName} />
+    <motion.button
+      onClick={handleAvatarClick}
+      className="w-8 h-8 relative"
+      title={message.senderName}
+      disabled={isSelectionMode}
+      whileHover={!isSelectionMode ? { scale: 1.1 } : undefined}
+      whileTap={!isSelectionMode ? { scale: 0.9 } : undefined}
+    >
+      <MinionIcon name={message.senderName} />
+      {/* Selection circle for minion messages */}
+      {isSelectionMode && (
+        <motion.div
+          className={`absolute -left-3 top-1/2 w-4 h-4 rounded-full border-2 ${
+            isSelected 
+              ? 'bg-teal-500 border-teal-600'
+              : 'bg-transparent border-teal-400'
+          }`}
+          initial={{ scale: 1, opacity: 0, y: '-50%', x: '-100%' }}
+          animate={{ scale: 1, opacity: 1, y: '-50%', x: '-100%' }}
+        />
+      )}
+    </motion.button>
   );
 
   const senderNameDisplay = isUser ? LEGION_COMMANDER_NAME : message.senderName;
@@ -331,9 +424,14 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, minionConfig, channe
     <motion.div
       variants={ANIMATION_VARIANTS.messageEntry}
       initial="hidden"
-      animate="visible"
+      animate={{
+        ...ANIMATION_VARIANTS.messageEntry.visible,
+        // Selection mode slide animations
+        x: isSelectionMode ? (isUser ? -20 : 20) : 0
+      }}
       exit="exit"
       layout={false}
+      transition={getAnimationConfig('gentle')}
       className={`flex items-end gap-3 p-3 ${isUser ? 'justify-end' : ''}`}>
       {!isUser && (
         <motion.div 
@@ -349,7 +447,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, minionConfig, channe
       <div className={`w-full max-w-[80%] flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>
         <div className="relative group/message w-full">
             <AnimatePresence>
-              {showDiary && isMinion && !isRegulator && message.internalDiary && (
+              {isDiaryVisible && isMinion && !isRegulator && message.internalDiary && (
                 <motion.div
                   layout
                   initial={{ opacity: 0, y: 20, height: 0 }}
@@ -366,93 +464,17 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, minionConfig, channe
               )}
             </AnimatePresence>
 
-          <motion.div 
-            className={`absolute top-0 z-10 flex items-center gap-2 ${ isUser ? 'flex-row-reverse left-0 -translate-x-full pr-2' : 'flex-row right-0 translate-x-full pl-2'}`}
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ 
-              opacity: isEditing ? 0 : 0,
-              scale: isEditing ? 0.8 : 1 
-            }}
-            whileInView={{
-              opacity: isEditing ? 0 : 1
-            }}
-            transition={getAnimationConfig('haptic')}
-          >
-              {isUser && (
-                <motion.button 
-                  onClick={() => setIsEditing(true)} 
-                  className="p-1 text-neutral-400 rounded"
-                  title="Edit"
-                  variants={ANIMATION_VARIANTS.button}
-                  initial="idle"
-                  whileHover="hover"
-                  whileTap="tap"
-                  whileHover={{
-                    color: 'rgb(245, 158, 11)',
-                    backgroundColor: 'rgba(245, 158, 11, 0.1)',
-                    ...ANIMATION_VARIANTS.button.hover
-                  }}
-                >
-                  <motion.div
-                    animate={{ rotate: 0 }}
-                    whileHover={{ rotate: 15 }}
-                    transition={{ duration: 0.2 }}
-                  >
-                    <PencilIcon className="w-4 h-4" />
-                  </motion.div>
-                </motion.button>
-              )}
-              {isMinion && !isRegulator && message.internalDiary && (
-                <motion.button 
-                  onClick={() => setShowDiary(!showDiary)} 
-                  className="p-1 text-neutral-400 rounded"
-                  title={`Toggle ${message.senderName}'s Diary`}
-                  variants={ANIMATION_VARIANTS.button}
-                  initial="idle"
-                  whileHover="hover"
-                  whileTap="tap"
-                  whileHover={{
-                    color: 'rgb(20, 184, 166)',
-                    backgroundColor: 'rgba(20, 184, 166, 0.1)',
-                    ...ANIMATION_VARIANTS.button.hover
-                  }}
-                  animate={{
-                    color: showDiary ? 'rgb(20, 184, 166)' : 'rgb(163, 163, 163)'
-                  }}
-                >
-                  <motion.div
-                    animate={{ rotate: showDiary ? 180 : 0 }}
-                    transition={{ duration: 0.3, ease: 'easeOut' }}
-                  >
-                    <BookOpenIcon className="w-4 h-4" />
-                  </motion.div>
-                </motion.button>
-              )}
-              <motion.button 
-                onClick={() => onDelete(message.channelId, message.id)} 
-                className="p-1 text-neutral-400 rounded"
-                title="Delete"
-                variants={ANIMATION_VARIANTS.button}
-                initial="idle"
-                whileHover="hover"
-                whileTap="tap"
-                whileHover={{
-                  color: 'rgb(239, 68, 68)',
-                  backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                  ...ANIMATION_VARIANTS.button.hover
-                }}
-              >
-                <motion.div
-                  animate={{ rotate: 0 }}
-                  whileHover={{ rotate: [0, -10, 10, -5, 0] }}
-                  transition={{ duration: 0.4 }}
-                >
-                  <TrashIcon className="w-4 h-4" />
-                </motion.div>
-              </motion.button>
-          </motion.div>
+          {/* Selection mode: no hover buttons, use right-click and selection actions */}
 
-          <div style={bubbleStyle} className={getBubbleClasses()}>
+          <motion.div 
+            style={bubbleStyle} 
+            className={`${getBubbleClasses()} ${isSelected ? 'ring-2 ring-amber-400 ring-offset-2' : ''} ${isSelectionMode ? 'cursor-pointer' : ''}`}
+            onContextMenu={handleContextMenu}
+            onClick={handleBubbleClick}
+            onDoubleClick={handleDoubleClick}
+            whileHover={isSelectionMode ? { scale: 1.02 } : undefined}
+            transition={getAnimationConfig('gentle')}
+          >
             <div className="flex items-center justify-between mb-1">
               <span style={nameStyle} className={getNameClasses()}>
                 {senderNameDisplay} {isRegulator && '(Regulator)'}
@@ -538,7 +560,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, minionConfig, channe
                 <span>{message.content}</span>
               </div>
             )}
-          </div>
+          </motion.div>
         </div>
       </div>
 
@@ -561,8 +583,12 @@ const areEqual = (prevProps: ChatMessageProps, nextProps: ChatMessageProps) => {
   const prev = prevProps.message;
   const next = nextProps.message;
   
-  // Fast path: if it's the same message object, skip deep comparison
-  if (prev === next && prevProps.isProcessing === nextProps.isProcessing) {
+  // Fast path: if it's the same message object and no selection state changed
+  if (prev === next && 
+      prevProps.isProcessing === nextProps.isProcessing &&
+      prevProps.isSelectionMode === nextProps.isSelectionMode &&
+      prevProps.isSelected === nextProps.isSelected &&
+      prevProps.isBulkDiaryVisible === nextProps.isBulkDiaryVisible) {
     return true;
   }
   
@@ -573,7 +599,10 @@ const areEqual = (prevProps: ChatMessageProps, nextProps: ChatMessageProps) => {
     prev.senderName !== next.senderName ||
     prev.senderType !== next.senderType ||
     prev.isError !== next.isError ||
-    prevProps.isProcessing !== nextProps.isProcessing
+    prevProps.isProcessing !== nextProps.isProcessing ||
+    prevProps.isSelectionMode !== nextProps.isSelectionMode ||
+    prevProps.isSelected !== nextProps.isSelected ||
+    prevProps.isBulkDiaryVisible !== nextProps.isBulkDiaryVisible
   ) {
     return false;
   }
@@ -589,7 +618,6 @@ const areEqual = (prevProps: ChatMessageProps, nextProps: ChatMessageProps) => {
     }
   }
   
-  // Skip expensive function reference checks - they should be stable
   return true;
 };
 

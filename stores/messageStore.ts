@@ -15,6 +15,12 @@ export interface MessageState {
   isAutoScrollEnabled: boolean;
   activeMinionProcessors: Record<string, boolean>;
   
+  // Selection mode state
+  isSelectionMode: boolean;
+  selectedMessageIds: Set<string>;
+  lastSelectedMessageId: string | null;
+  bulkDiaryVisible: Set<string>;
+  
   // Chunk processing state
   chunkQueue: Map<string, string[]>;
   isProcessingQueue: Map<string, boolean>;
@@ -28,6 +34,14 @@ export interface MessageActions {
   deleteMessage: (channelId: string, messageId: string) => void;
   setMessages: (channelId: string, messages: ChatMessageData[], hasMore: boolean) => void;
   prependMessages: (channelId: string, messages: ChatMessageData[], hasMore: boolean) => void;
+  
+  // Selection mode operations
+  toggleSelectionMode: () => void;
+  selectMessage: (messageId: string) => void;
+  selectMessageRange: (startId: string, endId: string, messages: ChatMessageData[]) => void;
+  clearSelection: () => void;
+  deleteSelectedMessages: (channelId: string) => void;
+  toggleBulkDiary: (messageIds: string[]) => void;
   
   // Message streaming and chunking
   processMessageChunk: (channelId: string, messageId: string, chunk: string) => void;
@@ -58,6 +72,13 @@ export const useMessageStore = create<MessageStore>()(
     isProcessingMessage: false,
     isAutoScrollEnabled: true,
     activeMinionProcessors: {},
+    
+    // Selection mode state
+    isSelectionMode: false,
+    selectedMessageIds: new Set(),
+    lastSelectedMessageId: null,
+    bulkDiaryVisible: new Set(),
+    
     chunkQueue: new Map(),
     isProcessingQueue: new Map(),
 
@@ -211,6 +232,84 @@ export const useMessageStore = create<MessageStore>()(
       set({ isAutoScrollEnabled: enabled });
     },
 
+    // Selection mode operations
+    toggleSelectionMode: () => {
+      set((state) => ({
+        isSelectionMode: !state.isSelectionMode,
+        selectedMessageIds: new Set(),
+        lastSelectedMessageId: null
+      }));
+    },
+
+    selectMessage: (messageId: string) => {
+      set((state) => {
+        const newSelected = new Set(state.selectedMessageIds);
+        if (newSelected.has(messageId)) {
+          newSelected.delete(messageId);
+        } else {
+          newSelected.add(messageId);
+        }
+        return {
+          selectedMessageIds: newSelected,
+          lastSelectedMessageId: messageId
+        };
+      });
+    },
+
+    selectMessageRange: (startId: string, endId: string, messages: ChatMessageData[]) => {
+      const startIndex = messages.findIndex(m => m.id === startId);
+      const endIndex = messages.findIndex(m => m.id === endId);
+      
+      if (startIndex === -1 || endIndex === -1) return;
+      
+      const min = Math.min(startIndex, endIndex);
+      const max = Math.max(startIndex, endIndex);
+      
+      set((state) => {
+        const newSelected = new Set(state.selectedMessageIds);
+        for (let i = min; i <= max; i++) {
+          newSelected.add(messages[i].id);
+        }
+        return { selectedMessageIds: newSelected };
+      });
+    },
+
+    clearSelection: () => {
+      set({ selectedMessageIds: new Set(), lastSelectedMessageId: null });
+    },
+
+    deleteSelectedMessages: (channelId: string) => {
+      set((state) => {
+        const selectedIds = Array.from(state.selectedMessageIds);
+        const filteredMessages = (state.messages[channelId] || []).filter(
+          m => !selectedIds.includes(m.id)
+        );
+        return {
+          messages: {
+            ...state.messages,
+            [channelId]: filteredMessages
+          },
+          selectedMessageIds: new Set(),
+          lastSelectedMessageId: null
+        };
+      });
+    },
+
+    toggleBulkDiary: (messageIds: string[]) => {
+      set((state) => {
+        const newBulkDiary = new Set(state.bulkDiaryVisible);
+        const allVisible = messageIds.every(id => newBulkDiary.has(id));
+        
+        if (allVisible) {
+          messageIds.forEach(id => newBulkDiary.delete(id));
+        } else {
+          messageIds.forEach(id => newBulkDiary.add(id));
+        }
+        
+        return { bulkDiaryVisible: newBulkDiary };
+      });
+    },
+
     // Utility functions
     getChannelMessages: (channelId: string) => {
       const { messages } = get();
@@ -243,3 +342,13 @@ export const useAutoScrollEnabled = () =>
 // Get raw processing state - let component do the filtering
 export const useActiveMinionProcessors = () => 
   useMessageStore((state) => state.activeMinionProcessors);
+
+// Selection mode hooks
+export const useSelectionMode = () => 
+  useMessageStore((state) => state.isSelectionMode);
+
+export const useSelectedMessages = () => 
+  useMessageStore((state) => state.selectedMessageIds);
+
+export const useBulkDiaryVisible = () => 
+  useMessageStore((state) => state.bulkDiaryVisible);

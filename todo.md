@@ -7,6 +7,10 @@
 
 - [ ] option to fucking DELETE a channel or clear ALL messages from one
 
+- currently theres the little buttons on the top right of each of the chat bubbles to show diary and delete the message. can we get rid of those buttons and change the functionality to this:  
+    - [x] **RIGHT CLICK** anywhere in the minions chat bubble expands / contracts the diary for that chat bubble
+    - [x] clicking on the minion icon next to any of the chat bubbles to trigger a standard **select-and-act** / **edit** mode. entering this mode temporarily adds three buttons in the header or title bar: "delete", "show diary", and "done". also, the icons and chat bubbles should recede slightly towards the center of the screen (MY icon and chat bubbles slide slightly left, and minion's icon chat bubbles slide slightly right). a small empty circle icon appears to the left of the minion's icons, and to the right of mine. in this mode, i can click on the actual chat bubbles to tpgg;toggle its state as being selected, and also hold **shift** to select the range between two chat bubbles that i select. i can click the "delete" or "show diary" button to delete all of the selected messages or expand the diary for all of the selected messages. (of course the show diary button wouldn't do anything for my messages). i can then select the "done" button to exit this **edit** mode.
+
 - [ ] ability to add a sort of "sub-folder" within the chat categories. for example, within the "DM" section of the channel list, i can add a folder of "direct reports" or something and move chats into that little folder section that i can fold / unfold to keep it organized and clean 
 
 - [ ] when clicking the new channel button, the list of participants should start wihtout anyone checked, and also have a "check/uncheck all" button thing
