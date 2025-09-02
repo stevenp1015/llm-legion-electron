@@ -7,11 +7,13 @@ import 'providers/chat_provider.dart';
 import 'services/legion_api_service.dart';
 import 'screens/enhanced_main_screen.dart';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
   // Initialize window manager for desktop
-  if (WidgetsBinding.instance.platformDispatcher.platformBrightness != null) {
+  if (!kIsWeb && (defaultTargetPlatform == TargetPlatform.windows || defaultTargetPlatform == TargetPlatform.linux || defaultTargetPlatform == TargetPlatform.macOS)) {
     await windowManager.ensureInitialized();
     
     WindowOptions windowOptions = const WindowOptions(
@@ -19,13 +21,17 @@ void main() async {
       center: true,
       backgroundColor: Colors.transparent,
       skipTaskbar: false,
-      titleBarStyle: TitleBarStyle.normal,
+      titleBarStyle: TitleBarStyle.hidden,
       title: 'LLM Legion Command Center - Flutter',
     );
     
     windowManager.waitUntilReadyToShow(windowOptions, () async {
       await windowManager.show();
       await windowManager.focus();
+      // On macOS, make the title bar transparent
+      if (defaultTargetPlatform == TargetPlatform.macOS) {
+        await windowManager.setHasShadow(false); // Optional: remove window shadow
+      }
     });
   }
   
@@ -46,8 +52,9 @@ class LegionApp extends StatelessWidget {
         ChangeNotifierProvider<AppProvider>(
           create: (_) => AppProvider(),
         ),
-        ChangeNotifierProvider<ChatProvider>(
-          create: (_) => ChatProvider(),
+        ChangeNotifierProxyProvider<LegionApiService, ChatProvider>(
+          create: (context) => ChatProvider(context.read<LegionApiService>()),
+          update: (context, apiService, previous) => ChatProvider(apiService),
         ),
       ],
       child: Consumer<AppProvider>(

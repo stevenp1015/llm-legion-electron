@@ -570,6 +570,68 @@ class LegionApiService {
     }
   }
 
+  /// Manually trigger the regulator to analyze a channel.
+  Future<void> manuallyTriggerRegulator(
+    String channelId,
+    Function(ChatMessage) onRegulatorReport,
+  ) async {
+    // Find the regulator minion
+    final regulatorMinion = _minionConfigs.firstWhere(
+      (m) => m.role == 'regulator' && m.enabled,
+      orElse: () => _minionConfigs.firstWhere((m) => m.enabled), // Fallback
+    );
+
+    if (regulatorMinion == null) {
+      debugPrint('No regulator minion found to trigger.');
+      return;
+    }
+
+    debugPrint('Triggering regulator: ${regulatorMinion.name}');
+
+    try {
+      final history = _channelMessages[channelId] ?? [];
+      final historyText = _formatChatHistoryForLLM(history, limit: 50);
+
+      // Assume the regulator server name is the same as the minion name
+      final serverName = regulatorMinion.name;
+
+      final result = await _mcpService.callTool(
+        serverName: serverName,
+        toolName: 'analyze_conversation',
+        arguments: {
+          'conversation_history': historyText,
+          'channel_id': channelId,
+        },
+      );
+
+      final reportMessage = ChatMessage(
+        id: _uuid.v4(),
+        channelId: channelId,
+        senderType: MessageSender.ai,
+        senderName: regulatorMinion.name,
+        senderRole: 'regulator',
+        content: result['report'] as String? ?? 'Regulator analysis complete.',
+        timestamp: DateTime.now().millisecondsSinceEpoch,
+        chatColor: regulatorMinion.chatColor,
+        fontColor: regulatorMinion.fontColor,
+      );
+      onRegulatorReport(reportMessage);
+
+    } catch (e) {
+      debugPrint('Failed to trigger regulator: $e');
+      final errorMessage = ChatMessage(
+        id: _uuid.v4(),
+        channelId: channelId,
+        senderType: MessageSender.system,
+        senderName: 'System',
+        content: 'Failed to trigger regulator: $e',
+        timestamp: DateTime.now().millisecondsSinceEpoch,
+        isError: true,
+      );
+      onRegulatorReport(errorMessage);
+    }
+  }
+
   // Helper methods
   ChannelType _parseChannelType(String? type) {
     switch (type) {

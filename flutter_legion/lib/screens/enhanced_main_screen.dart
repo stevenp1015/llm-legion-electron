@@ -21,6 +21,8 @@ import '../theming/vista_effects.dart';
 import '../animations/config.dart';
 import '../widgets/panels/channel_form_dialog.dart';
 import '../widgets/panels/minion_config_panel.dart';
+import 'mcp_manager_screen.dart';
+import 'analytics_dashboard_screen.dart';
 import 'dart:async';
 
 class EnhancedMainScreen extends StatefulWidget {
@@ -105,51 +107,13 @@ class _EnhancedMainScreenState extends State<EnhancedMainScreen>
   }
 
   Future<void> _sendMessage(String content) async {
-    if (_currentChannelId == null || content.trim().isEmpty) return;
-    
-    final chatProvider = context.read<ChatProvider>();
-    
-    // Create and add user message
-    final userMessage = chatProvider.createUserMessage(
-      _currentChannelId!,
-      content.trim(),
-      LegionApiService.legionCommanderName,
-    );
-    
-    chatProvider.addMessage(_currentChannelId!, userMessage);
-    _inputController.clear();
-    
-    // Auto-scroll to bottom
-    _autoScrollIfEnabled();
+    if (content.trim().isEmpty) return;
 
-    // Process message through Legion API
-    await _legionService.processMessageTurn(
-      channelId: _currentChannelId!,
-      triggeringMessage: userMessage,
-      onMinionResponse: (message) {
-        chatProvider.upsertMessage(message);
-        _autoScrollIfEnabled();
-      },
-      onMinionResponseChunk: (channelId, messageId, chunk) {
-        chatProvider.processMessageChunk(channelId, messageId, chunk);
-        _autoScrollIfEnabled();
-      },
-      onMinionProcessingUpdate: (minionName, isProcessing) {
-        chatProvider.setActiveMinionProcessor(minionName, isProcessing);
-      },
-      onSystemMessage: (message) {
-        chatProvider.addMessage(message.channelId, message);
-        _autoScrollIfEnabled();
-      },
-      onRegulatorReport: (message) {
-        chatProvider.addMessage(message.channelId, message);
-        _autoScrollIfEnabled();
-      },
-      onToolUpdate: (message) {
-        chatProvider.upsertMessage(message);
-        _autoScrollIfEnabled();
-      },
-    );
+    final chatProvider = context.read<ChatProvider>();
+    await chatProvider.sendMessage(content);
+    
+    _inputController.clear();
+    _autoScrollIfEnabled();
   }
 
   void _autoScrollIfEnabled() {
@@ -254,6 +218,19 @@ class _EnhancedMainScreenState extends State<EnhancedMainScreen>
     if (selectedMessages.isNotEmpty) {
       chatProvider.toggleBulkDiary(selectedMessages);
     }
+  }
+
+  void _handleManualRegulatorCall() async {
+    if (_currentChannelId == null) return;
+    final chatProvider = context.read<ChatProvider>();
+
+    await _legionService.manuallyTriggerRegulator(
+      _currentChannelId!,
+      (reportMessage) {
+        chatProvider.addMessage(reportMessage.channelId, reportMessage);
+        _autoScrollIfEnabled();
+      },
+    );
   }
 
   @override
@@ -595,6 +572,20 @@ class _EnhancedMainScreenState extends State<EnhancedMainScreen>
               const SizedBox(width: 8),
 
               VistaTooltip(
+                message: 'Analytics Dashboard',
+                child: VistaButton(
+                  onPressed: () => AnalyticsDashboardScreen.show(context),
+                  padding: const EdgeInsets.all(12),
+                  child: Icon(
+                    Icons.analytics,
+                    color: Colors.white.withOpacity(0.9),
+                  ),
+                ),
+              ),
+
+              const SizedBox(width: 8),
+
+              VistaTooltip(
                 message: 'Minions',
                 child: VistaButton(
                   onPressed: () => MinionConfigPanel.show(context),
@@ -611,12 +602,24 @@ class _EnhancedMainScreenState extends State<EnhancedMainScreen>
               VistaTooltip(
                 message: 'MCP Server Manager',
                 child: VistaButton(
-                  onPressed: () {
-                    // TODO: Open MCP manager
-                  },
+                  onPressed: () => McpManagerScreen.show(context),
                   padding: const EdgeInsets.all(12),
                   child: Icon(
                     Icons.settings,
+                    color: Colors.white.withOpacity(0.9),
+                  ),
+                ),
+              ),
+
+              const SizedBox(width: 8),
+
+              VistaTooltip(
+                message: 'Manually Trigger Regulator',
+                child: VistaButton(
+                  onPressed: _handleManualRegulatorCall,
+                  padding: const EdgeInsets.all(12),
+                  child: Icon(
+                    Icons.gavel,
                     color: Colors.white.withOpacity(0.9),
                   ),
                 ),

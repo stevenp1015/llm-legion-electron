@@ -1,294 +1,242 @@
 import 'dart:async';
 import 'dart:convert';
-import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
-import '../models/chat_message.dart';
+import 'package:http/http.dart' as http;
+import 'package:sse_client/sse_client.dart';
 
-class McpServerConfig {
-  final String id;
+// Represents the configuration and live status of an MCP server managed by the hub.
+class McpServer {
   final String name;
+  final String? mcpId;
+  final String status;
   final List<String> command;
-  final List<String>? args;
-  final Map<String, String>? env;
-  final bool enabled;
+  final List<McpTool> tools;
+  final bool disabled;
+  final int? pid;
+  final String? lastError;
 
-  const McpServerConfig({
-    required this.id,
+  McpServer({
     required this.name,
+    this.mcpId,
+    required this.status,
     required this.command,
-    this.args,
-    this.env,
-    this.enabled = true,
+    this.tools = const [],
+    this.disabled = false,
+    this.pid,
+    this.lastError,
   });
 
-  Map<String, dynamic> toJson() => {
-    'id': id,
-    'name': name,
-    'command': command,
-    'args': args,
-    'env': env,
-    'enabled': enabled,
-  };
+  factory McpServer.fromJson(Map<String, dynamic> json) {
+    var toolsList = (json['tools'] as List<dynamic>?)
+        ?.map((toolJson) => McpTool.fromJson(toolJson as Map<String, dynamic>))
+        .toList() ?? [];
 
-  factory McpServerConfig.fromJson(Map<String, dynamic> json) {
-    return McpServerConfig(
-      id: json['id'],
+    return McpServer(
       name: json['name'],
-      command: List<String>.from(json['command']),
-      args: json['args'] != null ? List<String>.from(json['args']) : null,
-      env: json['env'] != null ? Map<String, String>.from(json['env']) : null,
-      enabled: json['enabled'] ?? true,
+      mcpId: json['mcp_id'],
+      status: json['status'],
+      command: List<String>.from(json['command'] ?? []),
+      tools: toolsList,
+      disabled: json['disabled'] ?? false,
+      pid: json['pid'],
+      lastError: json['last_error'],
+    );
+  }
+
+  McpServer copyWith({
+    String? name,
+    String? mcpId,
+    String? status,
+    List<String>? command,
+    List<McpTool>? tools,
+    bool? disabled,
+    int? pid,
+    String? lastError,
+  }) {
+    return McpServer(
+      name: name ?? this.name,
+      mcpId: mcpId ?? this.mcpId,
+      status: status ?? this.status,
+      command: command ?? this.command,
+      tools: tools ?? this.tools,
+      disabled: disabled ?? this.disabled,
+      pid: pid ?? this.pid,
+      lastError: lastError ?? this.lastError,
     );
   }
 }
 
+// Represents a single tool available from an MCP server.
 class McpTool {
   final String name;
   final String? description;
   final Map<String, dynamic>? inputSchema;
-  final String? serverId;
-  final String? serverName;
 
   const McpTool({
     required this.name,
     this.description,
     this.inputSchema,
-    this.serverId,
-    this.serverName,
   });
 
   factory McpTool.fromJson(Map<String, dynamic> json) {
     return McpTool(
       name: json['name'],
       description: json['description'],
-      inputSchema: json['inputSchema'],
-      serverId: json['serverId'],
-      serverName: json['serverName'],
+      inputSchema: json['input_schema'] as Map<String, dynamic>?,
     );
   }
 }
 
+// Service to interact with the MCP Hub API.
 class McpService {
   static const String _defaultMcpHubUrl = 'http://localhost:37373';
-  late String _mcpHubUrl;
-  late http.Client _httpClient;
-  
-  bool _isInitialized = false;
-  final Map<String, McpServerConfig> _serverConfigs = {};
-  final Map<String, List<McpTool>> _availableTools = {};
+  final String _mcpHubUrl;
+  final http.Client _httpClient;
+  SseClient? _sseClient;
 
-  McpService({String? mcpHubUrl}) {
-    _mcpHubUrl = mcpHubUrl ?? _defaultMcpHubUrl;
-    _httpClient = http.Client();
-  }
+  // Stream controller to broadcast server updates to the app.
+  final _serverController = StreamController<List<McpServer>>.broadcast();
+  Stream<List<McpServer>> get serverStream => _serverController.stream;
 
-  bool get isInitialized => _isInitialized;
-  Map<String, McpServerConfig> get serverConfigs => _serverConfigs;
-  Map<String, List<McpTool>> get availableTools => _availableTools;
+  // Internal cache of servers.
+  List<McpServer> _servers = [];
 
-  /// Initialize the MCP service and connect to MCP Hub
+  McpService({String? mcpHubUrl})
+      : _mcpHubUrl = mcpHubUrl ?? _defaultMcpHubUrl,
+        _httpClient = http.Client();
+
+  /// Initializes the service, fetches initial data, and connects to the SSE stream.
   Future<void> initialize() async {
+    debugPrint('Initializing McpService...');
     try {
-      // Test connection to MCP Hub
-      final response = await _httpClient.get(
-        Uri.parse('$_mcpHubUrl/api/servers'),
-        headers: {'Content-Type': 'application/json'},
-      );
-
-      if (response.statusCode == 200) {
-        _isInitialized = true;
-        await _loadServerConfigs();
-        await _refreshAvailableTools();
-        debugPrint('MCP Service initialized successfully');
-      } else {
-        throw Exception('Failed to connect to MCP Hub: ${response.statusCode}');
-      }
+      await fetchInitialServers();
+      _connectToSse();
+      debugPrint('McpService initialized successfully with ${_servers.length} servers.');
     } catch (e) {
-      debugPrint('Failed to initialize MCP Service: $e');
-      // For development, we can still proceed without MCP Hub
-      _isInitialized = true;
+      debugPrint('Failed to initialize McpService: $e');
+      // In case of failure, broadcast an empty list.
+      _serverController.add([]);
+      rethrow;
     }
   }
 
-  /// Load server configurations from MCP Hub
-  Future<void> _loadServerConfigs() async {
-    try {
-      final response = await _httpClient.get(
-        Uri.parse('$_mcpHubUrl/api/servers'),
-        headers: {'Content-Type': 'application/json'},
-      );
+  /// Fetches the initial list of servers from the hub.
+  Future<void> fetchInitialServers() async {
+    final response = await _httpClient.get(
+      Uri.parse('$_mcpHubUrl/api/servers'),
+      headers: {'Accept': 'application/json'},
+    );
 
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        final List<dynamic> servers = data['servers'] ?? [];
-        
-        _serverConfigs.clear();
-        for (final serverData in servers) {
-          final config = McpServerConfig.fromJson(serverData);
-          _serverConfigs[config.id] = config;
-        }
-      }
-    } catch (e) {
-      debugPrint('Failed to load server configs: $e');
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body) as Map<String, dynamic>;
+      final serverList = (data['servers'] as List<dynamic>?)
+          ?.map((serverJson) => McpServer.fromJson(serverJson as Map<String, dynamic>))
+          .toList() ?? [];
+      _servers = serverList;
+      _serverController.add(List.from(_servers)); // Broadcast initial list
+    } else {
+      throw Exception('Failed to fetch servers from hub: ${response.statusCode}');
     }
   }
 
-  /// Refresh available tools from all active servers
-  Future<void> _refreshAvailableTools() async {
-    try {
-      final response = await _httpClient.get(
-        Uri.parse('$_mcpHubUrl/api/tools'),
-        headers: {'Content-Type': 'application/json'},
-      );
+  /// Connects to the hub's Server-Sent Events stream for real-time updates.
+  void _connectToSse() {
+    debugPrint('Connecting to MCP Hub SSE at $_mcpHubUrl/api/events');
+    _sseClient = SseClient.connect(Uri.parse('$_mcpHubUrl/api/events'));
 
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        final Map<String, dynamic> toolsByServer = data['tools'] ?? {};
-        
-        _availableTools.clear();
-        toolsByServer.forEach((serverId, tools) {
-          final List<dynamic> toolList = tools;
-          _availableTools[serverId] = toolList
-              .map((tool) => McpTool.fromJson(tool))
-              .toList();
-        });
-      }
-    } catch (e) {
-      debugPrint('Failed to refresh available tools: $e');
-    }
+    _sseClient!.stream.listen(
+      (event) {
+        debugPrint('SSE event received: ${event.event}');
+        debugPrint('SSE data received: ${event.data}');
+        // TODO: Handle different event types (e.g., 'SERVERS_UPDATED')
+        // For now, we'll just refetch the whole list on any event.
+        // A more robust implementation would parse the event data and update the list incrementally.
+        fetchInitialServers();
+      },
+      onError: (error) {
+        debugPrint('SSE connection error: $error');
+        // Optional: Implement reconnection logic.
+      },
+      onDone: () {
+        debugPrint('SSE connection closed.');
+      },
+    );
   }
 
-  /// Add a new MCP server configuration
-  Future<bool> addServer(McpServerConfig config) async {
+  /// Sends a request to the hub to start a server.
+  Future<void> startServer(String serverName) async {
     try {
       final response = await _httpClient.post(
-        Uri.parse('$_mcpHubUrl/api/servers'),
+        Uri.parse('$_mcpHubUrl/api/servers/start'),
         headers: {'Content-Type': 'application/json'},
-        body: json.encode(config.toJson()),
+        body: json.encode({'server_name': serverName}),
       );
-
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        _serverConfigs[config.id] = config;
-        await _refreshAvailableTools();
-        return true;
+      if (response.statusCode != 200) {
+        debugPrint('Failed to start server $serverName: ${response.statusCode} ${response.body}');
+        // Optionally throw an exception here to notify the UI
       }
-      return false;
+      // The SSE event should update the state, but we can optimistically fetch
+      await fetchInitialServers();
     } catch (e) {
-      debugPrint('Failed to add server: $e');
-      return false;
+      debugPrint('Error starting server $serverName: $e');
+      rethrow;
     }
   }
 
-  /// Remove an MCP server configuration
-  Future<bool> removeServer(String serverId) async {
-    try {
-      final response = await _httpClient.delete(
-        Uri.parse('$_mcpHubUrl/api/servers/$serverId'),
-        headers: {'Content-Type': 'application/json'},
-      );
-
-      if (response.statusCode == 200) {
-        _serverConfigs.remove(serverId);
-        _availableTools.remove(serverId);
-        return true;
-      }
-      return false;
-    } catch (e) {
-      debugPrint('Failed to remove server: $e');
-      return false;
-    }
-  }
-
-  /// Start an MCP server
-  Future<bool> startServer(String serverId) async {
+  /// Sends a request to the hub to stop a server.
+  Future<void> stopServer(String serverName) async {
     try {
       final response = await _httpClient.post(
-        Uri.parse('$_mcpHubUrl/api/servers/$serverId/start'),
+        Uri.parse('$_mcpHubUrl/api/servers/stop'),
         headers: {'Content-Type': 'application/json'},
+        body: json.encode({'server_name': serverName}),
       );
-
-      if (response.statusCode == 200) {
-        await _refreshAvailableTools();
-        return true;
+      if (response.statusCode != 200) {
+        debugPrint('Failed to stop server $serverName: ${response.statusCode} ${response.body}');
       }
-      return false;
+      // The SSE event should update the state, but we can optimistically fetch
+      await fetchInitialServers();
     } catch (e) {
-      debugPrint('Failed to start server: $e');
-      return false;
+      debugPrint('Error stopping server $serverName: $e');
+      rethrow;
     }
   }
 
-  /// Stop an MCP server
-  Future<bool> stopServer(String serverId) async {
+  /// Calls a tool on a specific server via the hub.
+  Future<Map<String, dynamic>> callTool({
+    required String serverName,
+    required String toolName,
+    required Map<String, dynamic> arguments,
+  }) async {
     try {
       final response = await _httpClient.post(
-        Uri.parse('$_mcpHubUrl/api/servers/$serverId/stop'),
-        headers: {'Content-Type': 'application/json'},
-      );
-
-      if (response.statusCode == 200) {
-        _availableTools.remove(serverId);
-        return true;
-      }
-      return false;
-    } catch (e) {
-      debugPrint('Failed to stop server: $e');
-      return false;
-    }
-  }
-
-  /// Call an MCP tool
-  Future<Map<String, dynamic>?> callTool(String toolName, Map<String, dynamic> arguments) async {
-    try {
-      final response = await _httpClient.post(
-        Uri.parse('$_mcpHubUrl/mcp/tools/call'),
+        Uri.parse('$_mcpHubUrl/api/servers/tools'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({
-          'name': toolName,
+          'server_name': serverName,
+          'tool': toolName,
           'arguments': arguments,
         }),
       );
 
       if (response.statusCode == 200) {
-        return json.decode(response.body);
+        final data = json.decode(response.body);
+        return data['result'] as Map<String, dynamic>;
+      } else {
+        final errorBody = json.decode(response.body);
+        throw Exception('Failed to call tool: ${response.statusCode} - ${errorBody['error']}');
       }
-      return null;
     } catch (e) {
-      debugPrint('Failed to call tool: $e');
-      return null;
+      debugPrint('Error calling tool $toolName on $serverName: $e');
+      rethrow;
     }
   }
 
-  /// Get available tools for a specific LLM (if permissions are configured)
-  List<McpTool> getToolsForLLM(String? llmId) {
-    final allTools = <McpTool>[];
-    
-    _availableTools.forEach((serverId, tools) {
-      // In a real implementation, you'd check permissions here
-      allTools.addAll(tools);
-    });
-    
-    return allTools;
-  }
-
-  /// Stream tool call responses (for long-running operations)
-  Stream<Map<String, dynamic>> streamToolCall(String toolName, Map<String, dynamic> arguments) async* {
-    try {
-      // For now, just yield the single response
-      // In a real implementation, you might use Server-Sent Events or WebSockets
-      final result = await callTool(toolName, arguments);
-      if (result != null) {
-        yield result;
-      }
-    } catch (e) {
-      debugPrint('Failed to stream tool call: $e');
-      yield {'error': 'Tool call failed: $e'};
-    }
-  }
-
-  /// Dispose of resources
+  /// Disposes of the resources used by the service.
   void dispose() {
+    _sseClient?.close();
+    _serverController.close();
     _httpClient.close();
-    _isInitialized = false;
+    debugPrint('McpService disposed.');
   }
 }

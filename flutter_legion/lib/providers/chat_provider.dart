@@ -4,8 +4,11 @@ import '../models/chat_message.dart';
 import '../models/channel.dart';
 import '../models/minion_config.dart';
 
+import '../services/legion_api_service.dart';
+
 class ChatProvider extends ChangeNotifier {
   static const _uuid = Uuid();
+  final LegionApiService _legionApiService;
   
   // Core state
   final Map<String, List<ChatMessage>> _channelMessages = {};
@@ -22,6 +25,8 @@ class ChatProvider extends ChangeNotifier {
   
   // Active processing state
   final Map<String, bool> _activeMinionProcessors = {};
+
+  ChatProvider(this._legionApiService);
 
   // Getters
   List<ChatMessage> getChannelMessages(String? channelId) {
@@ -221,14 +226,52 @@ class ChatProvider extends ChangeNotifier {
   }
 
   // User message creation helper
-  ChatMessage createUserMessage(String channelId, String content, String senderName) {
+  ChatMessage _createUserMessage(String channelId, String content) {
     return ChatMessage(
       id: 'user-${DateTime.now().millisecondsSinceEpoch}',
       channelId: channelId,
       senderType: MessageSender.user,
-      senderName: senderName,
+      senderName: LegionApiService.legionCommanderName,
       content: content,
       timestamp: DateTime.now().millisecondsSinceEpoch,
     );
+  }
+
+  // --- Actions with Business Logic ---
+
+  Future<void> sendMessage(String content) async {
+    if (currentChannelId == null || content.trim().isEmpty) return;
+
+    final userMessage = _createUserMessage(currentChannelId!, content.trim());
+
+    addMessage(currentChannelId!, userMessage);
+
+    setProcessingMessage(true);
+    clearActiveMinionProcessors();
+
+    await _legionApiService.processMessageTurn(
+      channelId: currentChannelId!,
+      triggeringMessage: userMessage,
+      onMinionResponse: (message) {
+        upsertMessage(message);
+      },
+      onMinionResponseChunk: (channelId, messageId, chunk) {
+        processMessageChunk(channelId, messageId, chunk);
+      },
+      onMinionProcessingUpdate: (minionName, isProcessing) {
+        setActiveMinionProcessor(minionName, isProcessing);
+      },
+      onSystemMessage: (message) {
+        addMessage(message.channelId, message);
+      },
+      onRegulatorReport: (message) {
+        addMessage(message.channelId, message);
+      },
+      onToolUpdate: (message) {
+        upsertMessage(message);
+      },
+    );
+
+    setProcessingMessage(false);
   }
 }
