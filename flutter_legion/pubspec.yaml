@@ -45,6 +45,10 @@ dependencies:
   # Icons
   cupertino_icons: ^1.0.8
 
+  # Local MCP Client
+  mcp_client:
+    path: mcp_client-main
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

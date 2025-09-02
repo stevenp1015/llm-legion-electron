@@ -1,98 +1,14 @@
 import 'dart:async';
-import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
-import 'package:sse_client/sse_client.dart';
+import 'package:mcp_client/mcp_client.dart';
 
-// Represents the configuration and live status of an MCP server managed by the hub.
-class McpServer {
-  final String name;
-  final String? mcpId;
-  final String status;
-  final List<String> command;
-  final List<McpTool> tools;
-  final bool disabled;
-  final int? pid;
-  final String? lastError;
+export 'package:mcp_client/mcp_client.dart' show McpServer, McpTool;
 
-  McpServer({
-    required this.name,
-    this.mcpId,
-    required this.status,
-    required this.command,
-    this.tools = const [],
-    this.disabled = false,
-    this.pid,
-    this.lastError,
-  });
-
-  factory McpServer.fromJson(Map<String, dynamic> json) {
-    var toolsList = (json['tools'] as List<dynamic>?)
-        ?.map((toolJson) => McpTool.fromJson(toolJson as Map<String, dynamic>))
-        .toList() ?? [];
-
-    return McpServer(
-      name: json['name'],
-      mcpId: json['mcp_id'],
-      status: json['status'],
-      command: List<String>.from(json['command'] ?? []),
-      tools: toolsList,
-      disabled: json['disabled'] ?? false,
-      pid: json['pid'],
-      lastError: json['last_error'],
-    );
-  }
-
-  McpServer copyWith({
-    String? name,
-    String? mcpId,
-    String? status,
-    List<String>? command,
-    List<McpTool>? tools,
-    bool? disabled,
-    int? pid,
-    String? lastError,
-  }) {
-    return McpServer(
-      name: name ?? this.name,
-      mcpId: mcpId ?? this.mcpId,
-      status: status ?? this.status,
-      command: command ?? this.command,
-      tools: tools ?? this.tools,
-      disabled: disabled ?? this.disabled,
-      pid: pid ?? this.pid,
-      lastError: lastError ?? this.lastError,
-    );
-  }
-}
-
-// Represents a single tool available from an MCP server.
-class McpTool {
-  final String name;
-  final String? description;
-  final Map<String, dynamic>? inputSchema;
-
-  const McpTool({
-    required this.name,
-    this.description,
-    this.inputSchema,
-  });
-
-  factory McpTool.fromJson(Map<String, dynamic> json) {
-    return McpTool(
-      name: json['name'],
-      description: json['description'],
-      inputSchema: json['input_schema'] as Map<String, dynamic>?,
-    );
-  }
-}
-
-// Service to interact with the MCP Hub API.
+// Service to interact with the MCP Hub API using the mcp_client package.
 class McpService {
   static const String _defaultMcpHubUrl = 'http://localhost:37373';
   final String _mcpHubUrl;
-  final http.Client _httpClient;
-  SseClient? _sseClient;
+  Client? _mcpClient;
 
   // Stream controller to broadcast server updates to the app.
   final _serverController = StreamController<List<McpServer>>.broadcast();
@@ -102,81 +18,70 @@ class McpService {
   List<McpServer> _servers = [];
 
   McpService({String? mcpHubUrl})
-      : _mcpHubUrl = mcpHubUrl ?? _defaultMcpHubUrl,
-        _httpClient = http.Client();
+      : _mcpHubUrl = mcpHubUrl ?? _defaultMcpHubUrl;
 
-  /// Initializes the service, fetches initial data, and connects to the SSE stream.
+  /// Initializes the service, creates an MCP client, and connects to the hub.
   Future<void> initialize() async {
-    debugPrint('Initializing McpService...');
-    try {
+    debugPrint('Initializing McpService with mcp_client...');
+
+    final clientConfig = McpClientConfig(
+      name: 'LegionCommandCenterFlutter',
+      version: '1.0.0',
+      enableDebugLogging: true, // Turn on for debugging
+    );
+
+    final transportConfig = TransportConfig.sse(
+      serverUrl: _mcpHubUrl,
+    );
+
+    final result = await McpClient.createAndConnect(
+      config: clientConfig,
+      transportConfig: transportConfig,
+    );
+
+    if (result.isSuccess) {
+      _mcpClient = result.getOrThrow();
+      debugPrint('MCP client connected successfully.');
+      _setupListeners();
       await fetchInitialServers();
-      _connectToSse();
-      debugPrint('McpService initialized successfully with ${_servers.length} servers.');
-    } catch (e) {
-      debugPrint('Failed to initialize McpService: $e');
-      // In case of failure, broadcast an empty list.
-      _serverController.add([]);
-      rethrow;
+    } else {
+      final error = result.exceptionOrNull() ?? 'Unknown error';
+      debugPrint('Failed to connect MCP client: $error');
+      _serverController.addError(error);
+      throw Exception('Failed to connect MCP client: $error');
     }
+  }
+
+  /// Sets up listeners for events from the MCP client.
+  void _setupListeners() {
+    _mcpClient?.hubEvents.listen((event) {
+      debugPrint('Hub event received: ${event.type}');
+      // A more robust implementation would inspect the event payload.
+      // For now, we refetch the server list on any hub event.
+      fetchInitialServers();
+    });
   }
 
   /// Fetches the initial list of servers from the hub.
   Future<void> fetchInitialServers() async {
-    final response = await _httpClient.get(
-      Uri.parse('$_mcpHubUrl/api/servers'),
-      headers: {'Accept': 'application/json'},
-    );
+    if (_mcpClient == null) return;
 
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body) as Map<String, dynamic>;
-      final serverList = (data['servers'] as List<dynamic>?)
-          ?.map((serverJson) => McpServer.fromJson(serverJson as Map<String, dynamic>))
-          .toList() ?? [];
-      _servers = serverList;
-      _serverController.add(List.from(_servers)); // Broadcast initial list
-    } else {
-      throw Exception('Failed to fetch servers from hub: ${response.statusCode}');
+    try {
+      final servers = await _mcpClient!.listServers();
+      _servers = servers;
+      _serverController.add(List.from(_servers));
+    } catch (e) {
+      debugPrint('Error fetching servers: $e');
+      _serverController.addError(e);
     }
-  }
-
-  /// Connects to the hub's Server-Sent Events stream for real-time updates.
-  void _connectToSse() {
-    debugPrint('Connecting to MCP Hub SSE at $_mcpHubUrl/api/events');
-    _sseClient = SseClient.connect(Uri.parse('$_mcpHubUrl/api/events'));
-
-    _sseClient!.stream.listen(
-      (event) {
-        debugPrint('SSE event received: ${event.event}');
-        debugPrint('SSE data received: ${event.data}');
-        // TODO: Handle different event types (e.g., 'SERVERS_UPDATED')
-        // For now, we'll just refetch the whole list on any event.
-        // A more robust implementation would parse the event data and update the list incrementally.
-        fetchInitialServers();
-      },
-      onError: (error) {
-        debugPrint('SSE connection error: $error');
-        // Optional: Implement reconnection logic.
-      },
-      onDone: () {
-        debugPrint('SSE connection closed.');
-      },
-    );
   }
 
   /// Sends a request to the hub to start a server.
   Future<void> startServer(String serverName) async {
+    if (_mcpClient == null) return;
     try {
-      final response = await _httpClient.post(
-        Uri.parse('$_mcpHubUrl/api/servers/start'),
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({'server_name': serverName}),
-      );
-      if (response.statusCode != 200) {
-        debugPrint('Failed to start server $serverName: ${response.statusCode} ${response.body}');
-        // Optionally throw an exception here to notify the UI
-      }
-      // The SSE event should update the state, but we can optimistically fetch
-      await fetchInitialServers();
+      await _mcpClient!.startServer(serverName);
+      // The hub event will trigger a refresh.
     } catch (e) {
       debugPrint('Error starting server $serverName: $e');
       rethrow;
@@ -185,17 +90,10 @@ class McpService {
 
   /// Sends a request to the hub to stop a server.
   Future<void> stopServer(String serverName) async {
+    if (_mcpClient == null) return;
     try {
-      final response = await _httpClient.post(
-        Uri.parse('$_mcpHubUrl/api/servers/stop'),
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({'server_name': serverName}),
-      );
-      if (response.statusCode != 200) {
-        debugPrint('Failed to stop server $serverName: ${response.statusCode} ${response.body}');
-      }
-      // The SSE event should update the state, but we can optimistically fetch
-      await fetchInitialServers();
+      await _mcpClient!.stopServer(serverName);
+      // The hub event will trigger a refresh.
     } catch (e) {
       debugPrint('Error stopping server $serverName: $e');
       rethrow;
@@ -208,24 +106,14 @@ class McpService {
     required String toolName,
     required Map<String, dynamic> arguments,
   }) async {
+    if (_mcpClient == null) throw Exception('MCP Client not initialized');
     try {
-      final response = await _httpClient.post(
-        Uri.parse('$_mcpHubUrl/api/servers/tools'),
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({
-          'server_name': serverName,
-          'tool': toolName,
-          'arguments': arguments,
-        }),
+      final result = await _mcpClient!.callTool(
+        serverName,
+        toolName,
+        arguments,
       );
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        return data['result'] as Map<String, dynamic>;
-      } else {
-        final errorBody = json.decode(response.body);
-        throw Exception('Failed to call tool: ${response.statusCode} - ${errorBody['error']}');
-      }
+      return result.toJson();
     } catch (e) {
       debugPrint('Error calling tool $toolName on $serverName: $e');
       rethrow;
@@ -234,9 +122,8 @@ class McpService {
 
   /// Disposes of the resources used by the service.
   void dispose() {
-    _sseClient?.close();
+    _mcpClient?.disconnect();
     _serverController.close();
-    _httpClient.close();
     debugPrint('McpService disposed.');
   }
 }
