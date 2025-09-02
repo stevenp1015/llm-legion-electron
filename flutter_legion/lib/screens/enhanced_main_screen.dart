@@ -19,6 +19,9 @@ import '../widgets/common/morphing_channel_list.dart';
 import '../widgets/common/auto_hiding_scrollbar.dart';
 import '../theming/vista_effects.dart';
 import '../animations/config.dart';
+import '../widgets/panels/channel_form_dialog.dart';
+import '../widgets/panels/minion_config_panel.dart';
+import 'dart:async';
 
 class EnhancedMainScreen extends StatefulWidget {
   const EnhancedMainScreen({super.key});
@@ -29,11 +32,12 @@ class EnhancedMainScreen extends StatefulWidget {
 
 class _EnhancedMainScreenState extends State<EnhancedMainScreen>
     with TickerProviderStateMixin {
-  
+
   late LegionApiService _legionService;
   String? _currentChannelId;
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _inputController = TextEditingController();
+  Timer? _autoChatTimer;
 
   @override
   void initState() {
@@ -45,6 +49,7 @@ class _EnhancedMainScreenState extends State<EnhancedMainScreen>
   void dispose() {
     _scrollController.dispose();
     _inputController.dispose();
+    _autoChatTimer?.cancel();
     super.dispose();
   }
 
@@ -94,6 +99,8 @@ class _EnhancedMainScreenState extends State<EnhancedMainScreen>
           );
         }
       });
+
+      _rescheduleAutoChat();
     }
   }
 
@@ -160,6 +167,58 @@ class _EnhancedMainScreenState extends State<EnhancedMainScreen>
     }
   }
 
+  void _rescheduleAutoChat() {
+    _autoChatTimer?.cancel();
+    final appProvider = context.read<AppProvider>();
+    final current = appProvider.getChannel(_currentChannelId ?? '');
+    if (current == null) return;
+    if (current.type != ChannelType.minionMinionAuto || !current.isAutoModeActive) return;
+
+    final delay = _computeAutoDelay(current);
+    _autoChatTimer = Timer(delay, () async {
+      await _legionService.triggerNextAutoChatTurn(
+        current.id,
+        (m) {
+          context.read<ChatProvider>().upsertMessage(m);
+          _autoScrollIfEnabled();
+        },
+        (chId, msgId, chunk) {
+          context.read<ChatProvider>().processMessageChunk(chId, msgId, chunk);
+          _autoScrollIfEnabled();
+        },
+        (minionName, isProcessing) {
+          context.read<ChatProvider>().setActiveMinionProcessor(minionName, isProcessing);
+        },
+        (m) {
+          context.read<ChatProvider>().addMessage(m.channelId, m);
+          _autoScrollIfEnabled();
+        },
+        (m) {
+          context.read<ChatProvider>().addMessage(m.channelId, m);
+          _autoScrollIfEnabled();
+        },
+        (m) {
+          context.read<ChatProvider>().upsertMessage(m);
+          _autoScrollIfEnabled();
+        },
+      );
+
+      if (mounted) {
+        _rescheduleAutoChat();
+      }
+    });
+  }
+
+  Duration _computeAutoDelay(Channel c) {
+    if (c.autoModeDelayType == 'random' && c.autoModeRandomDelay != null) {
+      final min = c.autoModeRandomDelay!.min;
+      final max = c.autoModeRandomDelay!.max;
+      final secs = (min + (max - min) * (DateTime.now().millisecond % 1000) / 1000).round();
+      return Duration(seconds: secs.clamp(1, 60));
+    }
+    return Duration(seconds: (c.autoModeFixedDelay ?? 5).clamp(1, 60));
+  }
+
   // Selection mode handlers
   void _handleToggleSelection(String messageId, bool shiftKey) {
     final chatProvider = context.read<ChatProvider>();
@@ -217,11 +276,18 @@ class _EnhancedMainScreenState extends State<EnhancedMainScreen>
                     channels: appProvider.channels,
                     currentChannelId: chatProvider.currentChannelId,
                     onChannelSelected: _selectChannel,
-                    onEditChannel: (channel) {
-                      // TODO: Open channel edit dialog
+                    onEditChannel: (channel) async {
+                      final result = await ChannelFormDialog.show(context, initial: channel);
+                      if (result != null) {
+                        // Reselect to refresh view
+                        _selectChannel(result.id);
+                      }
                     },
-                    onCreateChannel: () {
-                      // TODO: Open channel creation dialog
+                    onCreateChannel: () async {
+                      final created = await ChannelFormDialog.show(context);
+                      if (created != null) {
+                        _selectChannel(created.id);
+                      }
                     },
                   ),
                   
@@ -487,6 +553,29 @@ class _EnhancedMainScreenState extends State<EnhancedMainScreen>
           // Controls
           Row(
             children: [
+              // Channel-specific quick controls
+              if (currentChannel != null && currentChannel.type == ChannelType.minionMinionAuto)
+                Row(
+                  children: [
+                    Text(
+                      'Auto',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: Colors.white.withOpacity(0.9),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Switch(
+                      value: currentChannel.isAutoModeActive,
+                      onChanged: (v) async {
+                        final updated = currentChannel.copyWith(isAutoModeActive: v);
+                        await _legionService.updateChannel(updated);
+                        appProvider.updateChannel(updated);
+                        _rescheduleAutoChat();
+                      },
+                    ),
+                    const SizedBox(width: 12),
+                  ],
+                ),
               VistaTooltip(
                 message: chatProvider.isAutoScrollEnabled 
                     ? 'Auto-scroll enabled'
@@ -504,21 +593,19 @@ class _EnhancedMainScreenState extends State<EnhancedMainScreen>
               ),
               
               const SizedBox(width: 8),
-              
+
               VistaTooltip(
-                message: 'Analytics Dashboard',
+                message: 'Minions',
                 child: VistaButton(
-                  onPressed: () {
-                    // TODO: Open analytics
-                  },
+                  onPressed: () => MinionConfigPanel.show(context),
                   padding: const EdgeInsets.all(12),
                   child: Icon(
-                    Icons.analytics,
+                    Icons.groups,
                     color: Colors.white.withOpacity(0.9),
                   ),
                 ),
               ),
-              
+
               const SizedBox(width: 8),
               
               VistaTooltip(
@@ -643,7 +730,7 @@ class _EnhancedMainScreenState extends State<EnhancedMainScreen>
               duration: const Duration(milliseconds: 400),
               delay: Duration(milliseconds: index * 50),
               curve: SpringConfig.gentle,
-            );
+          );
         },
       ),
     );

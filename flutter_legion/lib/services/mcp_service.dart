@@ -69,7 +69,7 @@ class McpTool {
 }
 
 class McpService {
-  static const String _defaultMcpHubUrl = 'http://localhost:3000';
+  static const String _defaultMcpHubUrl = 'http://localhost:37373';
   late String _mcpHubUrl;
   late http.Client _httpClient;
   

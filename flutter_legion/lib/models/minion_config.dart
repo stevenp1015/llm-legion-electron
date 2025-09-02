@@ -37,6 +37,7 @@ class MinionConfig {
   final bool enabled;
   final UsageStats? usageStats;
   final Map<String, dynamic>? mcpTools;
+  final int? regulationInterval; // seconds/messages-based configurable interval
 
   const MinionConfig({
     required this.id,
@@ -52,6 +53,7 @@ class MinionConfig {
     this.enabled = true,
     this.usageStats,
     this.mcpTools,
+    this.regulationInterval,
   });
 
   factory MinionConfig.fromJson(Map<String, dynamic> json) =>
@@ -73,6 +75,7 @@ class MinionConfig {
     bool? enabled,
     UsageStats? usageStats,
     Map<String, dynamic>? mcpTools,
+    int? regulationInterval,
   }) {
     return MinionConfig(
       id: id ?? this.id,
@@ -88,6 +91,7 @@ class MinionConfig {
       enabled: enabled ?? this.enabled,
       usageStats: usageStats ?? this.usageStats,
       mcpTools: mcpTools ?? this.mcpTools,
+      regulationInterval: regulationInterval ?? this.regulationInterval,
     );
   }
 }

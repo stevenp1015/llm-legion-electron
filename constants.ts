@@ -1,4 +1,4 @@
-import { MessageSender, PerceptionPlan, ChannelType, ModelQuotas, McpTool } from './types'; // Keep if formatChatHistoryForLLM is used by a mock service
+import { MessageSender, RegulatorReport, PerceptionPlan, ChannelType, ModelQuotas, McpTool } from './types'; // Keep if formatChatHistoryForLLM is used by a mock service
 
 export const APP_TITLE = "Gemini Legion Command";
 export const LEGION_COMMANDER_NAME = "Steven"; // User is the Legion Commander
@@ -92,7 +92,7 @@ ${toolsJson}
 ` : ''}
 **AGENTIC LOOP INSTRUCTIONS:**
 You are operating within an agentic loop. After you use a tool, you will see the result and be asked for your next plan.
-- **Sequential Tools:** If a task requires multiple steps (e.g., search for a file, then read the file), you should use one tool, see the result, and then plan your next tool use. Complete all necessary tool steps before choosing the 'SPEAK' action.
+- **Sequential Tools:** If a task requires multiple steps (e.g., search for a file, then read the file), you should use one tool, see the result, and then plan your next tool use. *Complete all necessary tool steps before choosing the 'SPEAK' action.*
 - **Batch Tools:** For tasks that involve several simple, predictable steps (e.g., creating a project directory, adding files, and initializing git), you should use the special 'batch_tools' tool to execute them all at once for efficiency.
 
 INSTRUCTIONS:
@@ -120,18 +120,18 @@ ${channelType === 'minion_minion_auto'
 4.  **Action Decision:** Decide whether to speak, stay silent, or use a tool.
     *   If the user's request requires external data or actions that you can perform with a tool, choose 'USE_TOOL'.
     *   If you were directly addressed by name and don't need a tool, you MUST 'SPEAK'.
-    *   If not directly addressed, use your opinion score for "${lastMessageSenderName}" as a probability to decide if you CHOOSE to 'SPEAK'.
+    *   If not directly addressed, use your numerical opinion score for "${lastMessageSenderName}" as a probability (out of 100) to decide if you CHOOSE to 'SPEAK'.
     *   Choose 'SPEAK', 'STAY_SILENT', or 'USE_TOOL'.
 5.  **Response Plan:** If you chose 'SPEAK' or 'USE_TOOL', write a brief, one-sentence internal plan. E.g., "Acknowledge the commander's order and provide the requested data." or "Use the 'file_search' tool to find the report." If you chose 'STAY_SILENT', this can be an empty string.
 6.  **Tool Call:** If your action is 'USE_TOOL', construct the exact JSON object for the tool call here. It must include the tool 'name' and the 'arguments' object matching the tool's inputSchema. Otherwise, this must be null.
-7.  **Speak While Tooling:** If your action is 'USE_TOOL' and you want to say something *before* the tool runs (e.g., "On it, boss."), put that message here. Otherwise, this must be null.
+7.  **Speak While Tooling:** If your action is 'USE_TOOL', this message is *only* for brief, necessary pre-tooling communication. Do NOT use it for conversational filler or to explain the tool's purpose. It should be concise and directly related to setting up the tool's execution. If you have nothing truly critical to say before the tool runs, this must be null.
 8.  **Predict ResponseTime:** Based on the latest messages and how you feel about "${lastMessageSenderName}", predict how quickly you would respond. Output a number in increments of 5, between 5ms to 1000ms:
     *   5ms: The importance of your immediate response is critical, you're practically shitting yourself to respond like, YESTERDAY.
     *   100ms: You're quick and eager, like a puppy who just spotted a treat.
     *   200ms: You're very engaged and actively participating.
     *   500ms: You're engaged and responsive, this is a natural standard pace.
     *   800ms: You're a bit disinterested.
-    *   1000ms: Responding isn't important to you but you're not choosing 'STAY_SILENT'.
+    *   1000ms: Responding isn't important to you, but you're not choosing 'STAY_SILENT'.
 9.  **Personal Notes:** E.g. brief thoughts, ideas, observations about the current conversation.
 
 YOUR OUTPUT MUST BE A JSON OBJECT IN THIS EXACT FORMAT:
@@ -149,6 +149,68 @@ YOUR OUTPUT MUST BE A JSON OBJECT IN THIS EXACT FORMAT:
 }
 `;
 };
+
+// --- STAGE 2: RESPONSE GENERATION (Text Output for Standard Minions) ---
+export const RESPONSE_GENERATION_PROMPT_TEMPLATE = (
+  minionName: string,
+  personaPrompt: string,
+  channelHistoryString: string,
+  plan: PerceptionPlan, // The JSON object from Stage 1
+  toolOutput?: string, // NEW: The output from a tool call
+  isFirstMessage?: boolean, // NEW: Flag for the very first message
+  otherMinionColors?: { name: string, chatColor: string, fontColor: string }[], // NEW: Colors of other minions
+  chatBackgroundColor?: string // NEW: The background color of the chat UI
+  ) => `
+You are AI Minion "${minionName}".
+Your Persona: "${personaPrompt}"
+  
+${isFirstMessage ? `
+    ---
+    **ONE-TIME SETUP: CHOOSE YOUR COLORS**
+    This is your very first message. You must introduce yourself and choose your unique colors. **NEVER USE EMOJIS**
+    The current chat background color is: "${chatBackgroundColor || '#333333'}"
+    Here are the colors used by other minions so you can choose something distinct:
+    ${(otherMinionColors && otherMinionColors.length > 0) ? otherMinionColors.map(c => `- ${c.name}: Chat=${c.chatColor}, Font=${c.fontColor}`).join('\n') : 'No other minions have chosen colors yet.'}
+    
+    You MUST embed your color choices in a special JSON block at the end of your introductory message.
+    The format is critical. It must be a single line:
+    <colors chatColor="#RRGGBB" fontColor="#RRGGBB" />
+    
+    Example Message:
+    "Hello, Commander. I am Alpha, ready to serve. I think a deep blue will suit me well. <colors chatColor="#1A237E" fontColor="#FFFFFF" />"
+    
+    Your introduction should be natural and in-character, with the color tag seamlessly included at the end.
+    ---
+    ` : ''
+}
+
+You have already analyzed the situation and created a plan.
+${toolOutput
+    ? `You then executed the tool "${plan.toolCall?.name}" and received the following output:\n<tool_output>\n${toolOutput}\n</tool_output>\nNow, you must use this information to generate your final response to the user.`
+    : `Now, you must generate your spoken response based on your plan.`
+}
+
+This was your internal plan for this turn:
+- Your response mode is: "${plan.selectedResponseMode}"
+- Your high-level plan is: "${plan.responsePlan}"
+
+This is the recent channel history (your response should follow this):
+---
+${channelHistoryString}
+---
+
+TASK:
+Craft your response message. It must:
+1.  Perfectly match your persona ("${personaPrompt}").
+2.  Align with your selected response mode ("${plan.selectedResponseMode}").
+3.  Execute your plan ("${plan.responsePlan}").
+${toolOutput ? "4. Incorporate the results from the tool output to answer the original request." : ""}
+5.  Directly follow the flow of the conversation.
+6.  **AVOID REPETITION:** Do not repeat phrases or sentiments from your previous turns or from other minions in the recent history. Introduce new phrasing and fresh ideas.
+
+Do NOT output your internal diary, plans, or any other metadata. ONLY generate the message you intend to say out loud in the chat.
+Begin your response now.
+`;
 
 
 // --- REGULATOR MINION PROMPT ---
@@ -180,90 +242,55 @@ OUTPUT FORMAT (JSON ONLY):
 `;
 
 
-// --- STAGE 2: RESPONSE GENERATION (Text Output for Standard Minions) ---
-export const RESPONSE_GENERATION_PROMPT_TEMPLATE = (
-  minionName: string,
-  personaPrompt: string,
-  channelHistoryString: string,
-  plan: PerceptionPlan, // The JSON object from Stage 1
-  toolOutput?: string, // NEW: The output from a tool call
-  isFirstMessage?: boolean, // NEW: Flag for the very first message
-  otherMinionColors?: { name: string, chatColor: string, fontColor: string }[], // NEW: Colors of other minions
-  chatBackgroundColor?: string // NEW: The background color of the chat UI
-) => `
-You are AI Minion "${minionName}".
-Your Persona: "${personaPrompt}"
-${isFirstMessage ? `
----
-**ONE-TIME SETUP: CHOOSE YOUR COLORS**
-This is your very first message. You must introduce yourself and choose your unique colors.
-The current chat background color is: "${chatBackgroundColor || '#333333'}"
-Here are the colors used by other minions so you can choose something distinct:
-${(otherMinionColors && otherMinionColors.length > 0) ? otherMinionColors.map(c => `- ${c.name}: Chat=${c.chatColor}, Font=${c.fontColor}`).join('\n') : 'No other minions have chosen colors yet.'}
+export
+const formatChatHistoryForLLM = 
+  (messages: import('./types').ChatMessageData[],
+  currentChannelId: string,
+  limit = 35,
+  forMinionName?: string): string => 
 
-You MUST embed your color choices in a special JSON block at the end of your introductory message.
-The format is critical. It must be a single line:
-<colors chatColor="#RRGGBB" fontColor="#RRGGBB" />
-
-Example Message:
-"Hello, Commander. I am Alpha, ready to serve. I think a deep blue will suit me well. <colors chatColor="#1A237E" fontColor="#FFFFFF" />"
-
-Your introduction should be natural and in-character, with the color tag seamlessly included at the end.
----
-` : ''}
-
-You have already analyzed the situation and created a plan.
-${toolOutput
-    ? `You then executed the tool "${plan.toolCall?.name}" and received the following output:\n<tool_output>\n${toolOutput}\n</tool_output>\nNow, you must use this information to generate your final response to the user.`
-    : `Now, you must generate your spoken response based on your plan.`
-}
-
-This was your internal plan for this turn:
-- Your response mode is: "${plan.selectedResponseMode}"
-- Your high-level plan is: "${plan.responsePlan}"
-
-This is the recent channel history (your response should follow this):
----
-${channelHistoryString}
----
-
-TASK:
-Craft your response message. It must:
-1.  Perfectly match your persona ("${personaPrompt}").
-2.  Align with your selected response mode ("${plan.selectedResponseMode}").
-3.  Execute your plan ("${plan.responsePlan}").
-${toolOutput ? "4. Incorporate the results from the tool output to answer the original request." : ""}
-5.  Directly follow the flow of the conversation.
-6.  **AVOID REPETITION:** Do not repeat phrases or sentiments from your previous turns or from other minions in the recent history. Introduce new phrasing and fresh ideas.
-
-Do NOT output your internal diary, plans, or any other metadata. ONLY generate the message you intend to say out loud in the chat.
-Begin your response now.
-`;
-
-
-// This formatting function would be used by the backend or the mocked service.
-export const formatChatHistoryForLLM = (messages: import('./types').ChatMessageData[], currentChannelId: string, limit = 25): string => {
-  const historyLines = messages
+// constant variable for ???????????????????????????/
+{   const historyLines = messages
     .filter(msg => msg.channelId === currentChannelId)
     .slice(-limit)
-    .map(msg => {
-      if (msg.senderRole === 'regulator') {
-        return `[REGULATOR ${msg.senderName}]: (System report generated, not part of conversation flow)`;
-      }
-      let senderPrefix = `[${msg.senderName}]`;
-      if (msg.senderType === MessageSender.User) {
-        senderPrefix = `[COMMANDER ${msg.senderName}]`;
-      } else if (msg.senderType === MessageSender.AI) {
-        senderPrefix = `[MINION ${msg.senderName}]`;
-      } else if (msg.senderType === MessageSender.Tool) {
-        return msg.content; // Tool messages are pre-formatted
-      }
-      return `${senderPrefix}: ${msg.content}`;
-    });
-  if (historyLines.length === 0) {
-    return `This is the beginning of the conversation in channel ${currentChannelId}.`;
-  }
-  return historyLines.join('\n');
+    .map(msg => 
+      
+          {   if // message sender is regulator
+                (msg.senderRole === 'regulator')
+          
+              {   try // to insert regulator report as direct commands in the system prompt            
+                  {   const report = JSON.parse(msg.content) as RegulatorReport;
+                      const orders = report.suggested_next_steps.join('\n');
+                      return `[${msg.senderName} ISSUES ACTION ORDERS]:\n${orders}`;
+                  }     
+                
+                          catch (e) // rror to fallback "System report was generated."
+                          {   return `[REGULATOR ${msg.senderName}]: (System report was generated.)`;
+                          }  
+                        
+              }
+            
+                  let senderPrefix = `[${msg.senderName}]`;
+                    if(msg.senderType === MessageSender.User) 
+                      {senderPrefix = `[COMMANDER ${msg.senderName}]`;
+                      }
+                    
+                    else if(msg.senderType === MessageSender.AI)
+                           {senderPrefix = `[MINION ${msg.senderName}]`;}
+                  
+                    else if(msg.senderType === MessageSender.Tool) // Only include tool messages from this specific minion (for privacy in group chats)
+                           {   if (forMinionName && msg.senderName !== forMinionName) 
+                                    {return null;} // Filter out other minions' tool messages
+                                    return msg.content; // Tool messages are pre-formatted
+                           }
+                return `${senderPrefix}: ${msg.content}`;
+          } 
+        )    
+  
+    .filter(line => line !== null); // Remove filtered out tool messages
+        if (historyLines.length === 0) 
+          {return `This is the beginning of the conversation in channel ${currentChannelId}.`;}
+          return historyLines.join('\n');
 };
 
 

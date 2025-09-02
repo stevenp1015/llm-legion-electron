@@ -97,7 +97,8 @@ class _MainScreenState extends State<MainScreen> {
         _scrollController.animateTo(
           _scrollController.position.maxScrollExtent,
           duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
+          
+          curve: Curves.elasticOut,
         );
       }
     });

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { MinionConfig, ApiKey } from '../types';
-import { PlusIcon, PencilIcon, TrashIcon, XMarkIcon as CloseIcon, KeyIcon } from './Icons';
+import { MinionConfig, ApiKey, Channel } from '../types';
+import { PlusIcon, PencilIcon, TrashIcon, XMarkIcon as CloseIcon, KeyIcon, HashtagIcon } from './Icons';
 import ApiKeyManager from './ApiKeyManager';
 import MinionIcon from './MinionIcon';
 import Modal from './Modal';
@@ -8,9 +8,11 @@ import Modal from './Modal';
 interface MinionsPanelProps {
   minionConfigs: MinionConfig[];
   apiKeys: ApiKey[];
+  channels: Channel[];
   onDeleteMinion: (id: string) => void;
   onAddApiKey: (name: string, key: string) => Promise<void>;
   onDeleteApiKey: (id: string) => Promise<void>;
+  onBulkRemoveMinionFromChannels: (minionName: string, excludeChannels: string[]) => Promise<{ removedFromCount: number, affectedChannels: string[] }>;
   isOpen: boolean;
   onToggle: () => void;
   onEditMinion: (minion: MinionConfig) => void;
@@ -18,18 +20,55 @@ interface MinionsPanelProps {
 }
 
 const MinionsPanel: React.FC<MinionsPanelProps> = ({
-  minionConfigs, apiKeys,
+  minionConfigs, apiKeys, channels,
   onDeleteMinion,
   onAddApiKey, onDeleteApiKey,
+  onBulkRemoveMinionFromChannels,
   isOpen, onToggle,
   onEditMinion, onAddNewMinion
 }) => {
   const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
+  const [isBulkRemovalModalOpen, setIsBulkRemovalModalOpen] = useState(false);
+  const [selectedMinionForBulkRemoval, setSelectedMinionForBulkRemoval] = useState<string | null>(null);
+  const [excludeChannels, setExcludeChannels] = useState<string[]>([]);
+  const [bulkRemovalResult, setBulkRemovalResult] = useState<{ removedFromCount: number, affectedChannels: string[] } | null>(null);
   
   const handleDelete = (id: string) => {
     if (window.confirm(`Are you sure you want to DESTROY Minion: ${minionConfigs.find(m=>m.id===id)?.name || id}? This action cannot be undone.`)) {
         onDeleteMinion(id);
     }
+  };
+
+  const handleBulkRemovalOpen = (minionName: string) => {
+    setSelectedMinionForBulkRemoval(minionName);
+    // Pre-select channels where we typically want to keep minions
+    setExcludeChannels(['#general']);
+    setBulkRemovalResult(null);
+    setIsBulkRemovalModalOpen(true);
+  };
+
+  const handleBulkRemoval = async () => {
+    if (!selectedMinionForBulkRemoval) return;
+    
+    try {
+      const result = await onBulkRemoveMinionFromChannels(selectedMinionForBulkRemoval, excludeChannels);
+      setBulkRemovalResult(result);
+    } catch (error) {
+      console.error('Bulk removal failed:', error);
+      alert('Failed to remove minion from channels');
+    }
+  };
+
+  const toggleChannelExclusion = (channelName: string) => {
+    setExcludeChannels(prev => 
+      prev.includes(channelName) 
+        ? prev.filter(name => name !== channelName)
+        : [...prev, channelName]
+    );
+  };
+
+  const getChannelsWithMinion = (minionName: string) => {
+    return channels.filter(channel => channel.members.includes(minionName));
   };
 
   return (
@@ -72,6 +111,9 @@ const MinionsPanel: React.FC<MinionsPanelProps> = ({
                       <button onClick={() => onEditMinion(config)} className="p-1.5 text-neutral-500 hover:text-amber-500 transition-colors" title={`Edit ${config.name}'s Configuration`}>
                         <PencilIcon className="w-4 h-4" />
                       </button>
+                      <button onClick={() => handleBulkRemovalOpen(config.name)} className="p-1.5 text-neutral-500 hover:text-orange-500 transition-colors" title={`Remove ${config.name} from channels`}>
+                        <HashtagIcon className="w-4 h-4" />
+                      </button>
                       <button onClick={() => handleDelete(config.id)} className="p-1.5 text-neutral-500 hover:text-red-500 transition-colors" title={`Decommission ${config.name}`}>
                         <TrashIcon className="w-4 h-4" />
                       </button>
@@ -112,6 +154,90 @@ const MinionsPanel: React.FC<MinionsPanelProps> = ({
             onAddApiKey={onAddApiKey}
             onDeleteApiKey={onDeleteApiKey}
         />
+      </Modal>
+
+      <Modal
+        isOpen={isBulkRemovalModalOpen}
+        onClose={() => setIsBulkRemovalModalOpen(false)}
+        title={`Remove ${selectedMinionForBulkRemoval} from Channels`}
+        size="lg"
+      >
+        {selectedMinionForBulkRemoval && (
+          <div className="space-y-4">
+            {bulkRemovalResult ? (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                <h3 className="text-lg font-semibold text-green-800 mb-2">✅ Removal Complete!</h3>
+                <p className="text-green-700 mb-2">
+                  Removed <strong>{selectedMinionForBulkRemoval}</strong> from <strong>{bulkRemovalResult.removedFromCount}</strong> channels.
+                </p>
+                {bulkRemovalResult.affectedChannels.length > 0 && (
+                  <div className="mt-2">
+                    <p className="text-sm text-green-600 font-medium">Affected channels:</p>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {bulkRemovalResult.affectedChannels.map(channelName => (
+                        <span key={channelName} className="inline-block px-2 py-1 text-xs bg-green-100 text-green-700 rounded">
+                          {channelName}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <button 
+                  onClick={() => setIsBulkRemovalModalOpen(false)}
+                  className="mt-4 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
+                >
+                  Done
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="mb-4">
+                  <p className="text-sm text-neutral-600 mb-2">
+                    <strong>{selectedMinionForBulkRemoval}</strong> is currently in <strong>{getChannelsWithMinion(selectedMinionForBulkRemoval).length}</strong> channels.
+                  </p>
+                  <p className="text-sm text-neutral-500">
+                    Select channels to <strong>keep</strong> {selectedMinionForBulkRemoval} in. They will be removed from all other channels.
+                  </p>
+                </div>
+
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  <h4 className="text-sm font-semibold text-neutral-700">Channels to KEEP {selectedMinionForBulkRemoval} in:</h4>
+                  {getChannelsWithMinion(selectedMinionForBulkRemoval).map(channel => (
+                    <label key={channel.id} className="flex items-center space-x-3 p-2 hover:bg-neutral-50 rounded cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={excludeChannels.includes(channel.name)}
+                        onChange={() => toggleChannelExclusion(channel.name)}
+                        className="w-4 h-4 text-amber-500 border-neutral-300 rounded focus:ring-amber-500"
+                      />
+                      <div className="flex items-center space-x-2">
+                        <HashtagIcon className="w-4 h-4 text-neutral-400" />
+                        <span className="text-sm text-neutral-700">{channel.name}</span>
+                        <span className="text-xs text-neutral-500">({channel.type})</span>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+
+                <div className="flex gap-3 pt-4 border-t">
+                  <button
+                    onClick={() => setIsBulkRemovalModalOpen(false)}
+                    className="flex-1 px-4 py-2 text-neutral-600 bg-neutral-200 hover:bg-neutral-300 rounded-md transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleBulkRemoval}
+                    className="flex-1 px-4 py-2 bg-red-500 text-white hover:bg-red-600 rounded-md transition-colors"
+                    disabled={excludeChannels.length === getChannelsWithMinion(selectedMinionForBulkRemoval).length}
+                  >
+                    Remove from {getChannelsWithMinion(selectedMinionForBulkRemoval).length - excludeChannels.length} channels
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </Modal>
     </>
   );

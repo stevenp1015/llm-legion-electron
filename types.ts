@@ -143,6 +143,8 @@ export interface ChatMessageData {
   isToolOutput?: boolean;
   toolCall?: ToolCall;
   toolOutput?: string; // The raw output from the tool
+  // Internal flag to prevent content duplication during streaming
+  _skipContentUpdate?: boolean;
 }
 
 export interface ModelOption {
@@ -150,7 +152,7 @@ export interface ModelOption {
   name: string;
 }
 
-export type ChannelType = 'user_minion_group' | 'minion_minion_auto' | 'system_log' | 'dm';
+export type ChannelType = 'user_minion_group' | 'minion_minion_auto' | 'system_log' | 'dm' | 'minion_buddy_chat';
 
 export interface Channel {
   id:string;

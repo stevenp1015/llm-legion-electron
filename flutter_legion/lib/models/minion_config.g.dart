@@ -39,6 +39,7 @@ MinionConfig _$MinionConfigFromJson(Map<String, dynamic> json) => MinionConfig(
           ? null
           : UsageStats.fromJson(json['usageStats'] as Map<String, dynamic>),
       mcpTools: json['mcpTools'] as Map<String, dynamic>?,
+      regulationInterval: (json['regulationInterval'] as num?)?.toInt(),
     );
 
 Map<String, dynamic> _$MinionConfigToJson(MinionConfig instance) =>
@@ -54,6 +55,7 @@ Map<String, dynamic> _$MinionConfigToJson(MinionConfig instance) =>
       'temperature': instance.temperature,
       'maxTokens': instance.maxTokens,
       'enabled': instance.enabled,
-      'usageStats': instance.usageStats,
+      'usageStats': instance.usageStats?.toJson(),
       'mcpTools': instance.mcpTools,
+      'regulationInterval': instance.regulationInterval,
     };

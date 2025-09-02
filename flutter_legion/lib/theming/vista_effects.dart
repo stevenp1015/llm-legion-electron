@@ -247,59 +247,75 @@ class _VistaButtonState extends State<VistaButton> {
         onTapUp: (_) => setState(() => _isPressed = false),
         onTapCancel: () => setState(() => _isPressed = false),
         onTap: widget.onPressed,
-        child: AnimatedContainer(
-          duration: SpringConfig.hapticDuration,
-          curve: SpringConfig.haptic,
-          padding: widget.padding ?? const EdgeInsets.symmetric(
-            horizontal: 16, 
-            vertical: 12,
-          ),
+        child: Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(8),
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: _isPressed 
-                  ? [
-                      effectiveColor.withOpacity(0.8),
-                      effectiveColor.withOpacity(0.6),
-                    ]
-                  : _isHovering
-                      ? [
-                          effectiveColor.withOpacity(0.7),
-                          effectiveColor.withOpacity(0.5),
-                        ]
-                      : [
-                          effectiveColor.withOpacity(0.6),
-                          effectiveColor.withOpacity(0.4),
-                        ],
-            ),
-            border: Border.all(
-              color: Colors.white.withOpacity(_isHovering ? 0.4 : 0.2),
-              width: 1,
-            ),
             boxShadow: _isPressed 
                 ? [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.2),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
                     BoxShadow(
                       color: effectiveColor.withOpacity(0.3),
                       blurRadius: 4,
                       spreadRadius: 1,
                     ),
                   ]
-                : [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.2),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                    if (_isHovering)
-                      BoxShadow(
-                        color: effectiveColor.withOpacity(0.3),
-                        blurRadius: 12,
-                        spreadRadius: 2,
-                      ),
-                  ],
+                : _isHovering
+                    ? [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.2),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                        BoxShadow(
+                          color: effectiveColor.withOpacity(0.3),
+                          blurRadius: 12,
+                          spreadRadius: 2,
+                        ),
+                      ]
+                    : [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.2),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
           ),
+          child: AnimatedContainer(
+            duration: SpringConfig.hapticDuration,
+            curve: SpringConfig.haptic,
+            padding: widget.padding ?? const EdgeInsets.symmetric(
+              horizontal: 16, 
+              vertical: 12,
+            ),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: _isPressed 
+                    ? [
+                        effectiveColor.withOpacity(0.8),
+                        effectiveColor.withOpacity(0.6),
+                      ]
+                    : _isHovering
+                        ? [
+                            effectiveColor.withOpacity(0.7),
+                            effectiveColor.withOpacity(0.5),
+                          ]
+                        : [
+                            effectiveColor.withOpacity(0.6),
+                            effectiveColor.withOpacity(0.4),
+                          ],
+              ),
+              border: Border.all(
+                color: Colors.white.withOpacity(_isHovering ? 0.4 : 0.2),
+                width: 1,
+              ),
+            ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(7),
             child: BackdropFilter(
@@ -312,6 +328,7 @@ class _VistaButtonState extends State<VistaButton> {
                 child: widget.child,
               ),
             ),
+          ),
           ),
         ),
       ),

@@ -20,7 +20,7 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isSending, disable
       // Maintain height stability during submit
       requestAnimationFrame(() => {
         if (textareaRef.current) {
-          textareaRef.current.style.height = '30px'; // Fixed reset height
+          textareaRef.current.style.height = '36px'; // Fixed reset height
           textareaRef.current.focus();
         }
       });
@@ -34,38 +34,58 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isSending, disable
     }
   };
 
-  const handleTextareaInput = (event: React.FormEvent<HTMLTextAreaElement>) => {
-    setInputValue(event.currentTarget.value);
-    // Smoother height adjustment
-    requestAnimationFrame(() => {
-      if (textareaRef.current) {
-        const target = event.currentTarget;
-        const minHeight = 30;
-        const maxHeight = 120; // Limit max height
-        const newHeight = Math.min(Math.max(target.scrollHeight, minHeight), maxHeight);
-        textareaRef.current.style.height = `${newHeight}px`;
-      }
-    });
+  const handleTextareaInput = () => {
+    if (!textareaRef.current) return;
+
+    const target = textareaRef.current;
+    setInputValue(target.value);
+
+    // Reset height to shrink if text is deleted
+    target.style.height = '36px';
+
+    // Calculate the new height
+    const minHeight = 36;
+    const maxHeight = 300; // Limit max height
+    const scrollHeight = target.scrollHeight;
+    const newHeight = Math.min(Math.max(scrollHeight, minHeight), maxHeight);
+
+    target.style.height = `${newHeight}px`;
   };
-  
+
   useEffect(() => {
     if (textareaRef.current) {
         // Adjust initial height if needed, or keep it minimal
-        textareaRef.current.style.height = '30px'; // Approx 1 line height + padding
+        textareaRef.current.style.height = '36px'; // Approx 1 line height + padding
     }
   }, []);
 
 
   return (
-    <div className={`p-4 bg-zinc-50/80 border-t border-zinc-200 ${disabled ? 'opacity-50' : ''}`}>
-      <div className="flex items-center gap-2 bg-zinc-50 rounded-md p-0.5">
+    <div className={`px-3 py-3 bg-zinc-100/45 border-t border-zinc-200 ${disabled ? 'opacity-50' : ''}`}>
+      <div className="flex items-center gap-3 bg-zinc-50/30 border border-zinc-100 rounded-md p-0.5">
         <textarea
           ref={textareaRef}
           value={inputValue}
-          onChange={handleTextareaInput}
+          onInput={handleTextareaInput}
           onKeyDown={handleKeyDown}
           placeholder={disabled ? "Pause autonomous mode to send a message..." : "Type something..."}
-          className="chat-input-textarea flex-grow p-1.5 bg-transparent text-neutral-800 placeholder-neutral-500 border-none rounded-lg resize-none focus:ring-0 outline-none max-h-25 overflow-y-auto scrollbar-thin scrollbar-thumb-neutral-400/0 scrollbar-track-zinc-200/0"
+          className="chat-input-textarea 
+          flex-grow
+          p-1.5
+          bg-zinc-50 
+          text-black 
+          text-sm 
+          placeholder-neutral-500 
+          border-0
+          resize-none
+          rounded-sm
+          focus:ring-0
+          outline-none 
+          max-h-36
+          overflow-y-auto
+          scrollbar-thin 
+          scrollbar-thumb-neutral-400/0 
+          scrollbar-track-zinc-200/0"
           rows={1}
           disabled={disabled}
         />
@@ -76,7 +96,6 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isSending, disable
           aria-label="Send message"
           variants={ANIMATION_VARIANTS.button}
           initial="idle"
-          whileHover={!(isSending || !inputValue.trim() || disabled) ? "hover" : undefined}
           whileTap={!(isSending || !inputValue.trim() || disabled) ? "tap" : undefined}
           animate={{
             backgroundColor: disabled 

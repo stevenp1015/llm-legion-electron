@@ -32,6 +32,8 @@ dependencies:
   # Data & Storage
   shared_preferences: ^2.2.2
   path_provider: ^2.1.1
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
   
   # Utilities
   uuid: ^4.2.1

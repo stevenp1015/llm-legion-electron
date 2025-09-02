@@ -281,6 +281,7 @@ class _MorphingChannelListState extends State<MorphingChannelList>
     
     return Container(
       key: _channelKeys[channel.id],
+      constraints: const BoxConstraints(minHeight: 56), // Slightly taller for dual text
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
       child: VistaButton(
         onPressed: () => widget.onChannelSelected(channel.id),
@@ -325,7 +326,8 @@ class _MorphingChannelListState extends State<MorphingChannelList>
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
                     channel.name,

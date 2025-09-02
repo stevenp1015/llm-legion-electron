@@ -182,6 +182,29 @@ const App: React.FC = () => {
     setEditingMinion(undefined);
   };
   const deleteMinionConfig = async (id: string) => { await service.deleteMinion(id); setMinionConfigs(await service.getMinions()); setChannels(await service.getChannels()); };
+  const handleBulkRemoveMinionFromChannels = async (minionName: string, excludeChannels: string[]) => { 
+    const result = await service.bulkRemoveMinionFromChannels(minionName, excludeChannels); 
+    setChannels(await service.getChannels()); 
+    return result;
+  };
+
+  // Function to extract and apply chat name from minion response
+  const extractAndApplyChatName = async (channelId: string, minionResponse: string) => {
+    const chatNameMatch = minionResponse.match(/Chat Name:\s*(.+)$/im);
+    if (chatNameMatch && chatNameMatch[1]) {
+      const suggestedName = chatNameMatch[1].trim();
+      const channel = channels.find(c => c.id === channelId);
+      if (channel && channel.type === 'minion_buddy_chat' && channel.name === 'New Chat') {
+        // Update the channel name
+        const updatedChannelData: ChannelPayload = {
+          ...channel,
+          name: suggestedName,
+          members: channel.members
+        };
+        await handleAddOrUpdateChannel(updatedChannelData);
+      }
+    }
+  };
 
   // --- Message Management ---
   const handleMessageUpdate = useCallback((channelId: string, messageId: string, updates: Partial<ChatMessageData>) => { 
@@ -202,7 +225,15 @@ const App: React.FC = () => {
   }, [messageStoreActions]);
   const handleMessageUpsert = useCallback((message: ChatMessageData) => {
     messageStoreActions.upsertMessage(message);
-  }, [messageStoreActions]);
+    
+    // Check for chat naming in minion buddy chats
+    if (message.senderType === MessageSender.AI && message.content) {
+      const channel = channels.find(c => c.id === message.channelId);
+      if (channel?.type === 'minion_buddy_chat' && channel.name === 'New Chat') {
+        extractAndApplyChatName(message.channelId, message.content);
+      }
+    }
+  }, [messageStoreActions, channels, extractAndApplyChatName]);
 
   const handleToolUpdate = useCallback((updatedMessage: ChatMessageData) => {
     messageStoreActions.upsertMessage(updatedMessage);
@@ -323,6 +354,35 @@ const App: React.FC = () => {
       setCurrentChannelId(channelId);
   };
   const handleAddOrUpdateChannel = async (channelData: ChannelPayload) => { await service.addOrUpdateChannel(channelData); setChannels(await service.getChannels()); };
+  
+  const handleDeleteChannel = async (channelId: string) => { 
+    await service.deleteChannel(channelId); 
+    setChannels(await service.getChannels());
+    // If we deleted the current channel, switch to the first available channel
+    if (channelId === currentChannelId) {
+      const updatedChannels = await service.getChannels();
+      if (updatedChannels.length > 0) {
+        await selectChannel(updatedChannels[0].id);
+      } else {
+        setCurrentChannelId(null);
+      }
+    }
+  };
+
+  const handleCreateNewMinionChat = async (minionName: string) => {
+    const timestamp = Date.now();
+    const channelData: ChannelPayload = {
+      name: `New Chat`, // This will be renamed by the minion
+      type: 'minion_buddy_chat',
+      members: [LEGION_COMMANDER_NAME, minionName],
+      description: `Private chat with ${minionName}`
+    };
+    
+    const newChannel = await service.addOrUpdateChannel(channelData);
+    setChannels(await service.getChannels());
+    await selectChannel(newChannel.id);
+  };
+
 
   // --- Core Message Sending Logic ---
   const processAndDispatchMessage = async (channelId: string, message: ChatMessageData) => {
@@ -343,14 +403,37 @@ const App: React.FC = () => {
     messageStoreActions.setProcessingMessage(false);
   }
 
+  const handleManualRegulatorCall = useCallback(async () => {
+      if (!currentChannelId) return;
+      await service.manuallyTriggerRegulator(
+          currentChannelId,
+          (msg) => handleMessageAdd(msg.channelId, msg),
+          (msg) => handleMessageAdd(msg.channelId, msg)
+      );
+  }, [currentChannelId, service, handleMessageAdd]);
+
   const handleSendMessage = async (userInput: string) => {
     if (!currentChannelId || isProcessingMessage) return;
+    
+    // Check if this is the first message in a minion buddy chat
+    const currentMessages = messageStoreActions.getChannelMessages(currentChannelId);
+    const isFirstMessageInBuddyChat = currentMessages.length === 0 && 
+      currentChannel?.type === 'minion_buddy_chat';
+    
+    let messageContent = userInput;
+    if (isFirstMessageInBuddyChat) {
+      // Add auto-naming instructions to the first message
+      messageContent = `${userInput}
+
+[SYSTEM INSTRUCTION: This is the first message in a new private chat session. Please respond to the user's message above, and at the end of your response, suggest a brief, descriptive name for this conversation based on the topic. Format it like this: "Chat Name: [Your suggested name]"]`;
+    }
+    
     const userMessage: ChatMessageData = {
       id: `user-${Date.now()}`,
       channelId: currentChannelId,
       senderType: MessageSender.User,
       senderName: LEGION_COMMANDER_NAME,
-      content: userInput,
+      content: messageContent,
       timestamp: Date.now(),
     };
     handleMessageAdd(currentChannelId, userMessage);
@@ -456,6 +539,12 @@ const App: React.FC = () => {
               <circle cx="12" cy="12" r="3" />
             </svg>
           </button>
+          <button onClick={handleManualRegulatorCall}
+            className="p-2 rounded-md text-neutral-500 hover:text-red-500 hover:bg-red-100 transition-colors" title="Manually Trigger Regulator">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+            </svg>
+          </button>
           <button onClick={() => setIsMinionsPanelOpen(p => !p)}
             className="p-2 rounded-md text-neutral-500 hover:text-amber-500 hover:bg-zinc-200 transition-colors" title="Toggle Minions Roster">
             <CogIcon className="w-6 h-6 animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;" />
@@ -473,7 +562,16 @@ const App: React.FC = () => {
           onDone={handleExitSelectionMode}
           hasMinions={hasSelectedMinions}
         />
-        <ChannelList channels={channels} currentChannelId={currentChannelId} onSelectChannel={selectChannel} onAddOrUpdateChannel={handleAddOrUpdateChannel} allMinionNames={allMinionNames}/>
+        <ChannelList 
+          channels={channels} 
+          currentChannelId={currentChannelId} 
+          onSelectChannel={selectChannel} 
+          onAddOrUpdateChannel={handleAddOrUpdateChannel} 
+          onDeleteChannel={handleDeleteChannel}
+          onCreateNewMinionChat={handleCreateNewMinionChat}
+          allMinionNames={allMinionNames}
+          minionConfigs={minionConfigs}
+        />
         
         <main className="flex-1 flex flex-col overflow-hidden">
           {currentChannel ? (
@@ -491,9 +589,10 @@ const App: React.FC = () => {
               </div>
               <div 
                 ref={chatHistoryRef}
-                className="flex-1 overflow-y-auto p-4 space-y-3"
+                className="flex-1 overflow-y-auto p-4 flex justify-center"
                 onScroll={handleScroll}
               >
+                <div className="w-full max-w-6xl space-y-3">
                 {hasMoreMessagesInChannel && (
                   <div className="text-center py-2">
                     <button 
@@ -522,6 +621,7 @@ const App: React.FC = () => {
                     />
                   ))}
                 </AnimatePresence>
+                </div>
               </div>
               <ChatInput onSendMessage={handleSendMessage} isSending={isProcessingMessage} disabled={currentChannel.type === 'minion_minion_auto' && currentChannel.isAutoModeActive} />
             </>
@@ -533,9 +633,10 @@ const App: React.FC = () => {
         </main>
 
         <MinionsPanel 
-            minionConfigs={minionConfigs} apiKeys={apiKeys}
+            minionConfigs={minionConfigs} apiKeys={apiKeys} channels={channels}
             onDeleteMinion={deleteMinionConfig} 
             onAddApiKey={handleAddApiKey} onDeleteApiKey={handleDeleteApiKey}
+            onBulkRemoveMinionFromChannels={handleBulkRemoveMinionFromChannels}
             isOpen={isMinionsPanelOpen} onToggle={() => setIsMinionsPanelOpen(p => !p)} 
             onEditMinion={handleOpenEditMinion}
             onAddNewMinion={handleOpenAddNewMinion}

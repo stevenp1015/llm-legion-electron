@@ -136,12 +136,12 @@ export const ANIMATION_VARIANTS = {
   button: {
     idle: { scale: 1, opacity: 0.8 },
     hover: { 
-      scale: 1.05, 
+      scale: 1.1, 
       opacity: 1,
-      transition: getAnimationConfig('haptic')
+      transition: getAnimationConfig('stiff')
     },
     tap: { 
-      scale: 0.95,
+      scale: 0.9,
       transition: { 
         ...getAnimationConfig('stiff'),
         duration: 0.1

@@ -1,8 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import { motion } from 'motion/react';
-import { Channel, ChannelPayload } from '../types';
+import { Channel, ChannelPayload, MinionConfig } from '../types';
 import { HashtagIcon, PlusIcon, PencilIcon, CogIcon } from './Icons';
 import ChannelForm from './ChannelForm';
+import MinionBuddylist from './MinionBuddylist';
 import { getAnimationConfig, ANIMATION_VARIANTS } from '../animations/config';
 
 interface ChannelListProps {
@@ -10,7 +11,10 @@ interface ChannelListProps {
   currentChannelId: string | null;
   onSelectChannel: (channelId: string) => void;
   onAddOrUpdateChannel: (channel: ChannelPayload) => void;
+  onDeleteChannel: (channelId: string) => void;
+  onCreateNewMinionChat: (minionName: string) => void;
   allMinionNames: string[];
+  minionConfigs: MinionConfig[];
 }
 
 const ChannelSection: React.FC<{
@@ -38,7 +42,7 @@ const ChannelSection: React.FC<{
                         <div key={channel.id} className="relative px-2 group">
                             <motion.button
                                 onClick={() => onSelectChannel(channel.id)}
-                                className={`w-full flex items-center gap-2 px-3 py-1.5 text-left rounded-md relative overflow-hidden ${
+                                className={`w-full flex items-center gap-2 px-3 py-0.5 text-left text-sm rounded-md relative overflow-hidden ${
                                     isActive ? (isDm ? 'text-white' : 'text-white') : 'text-neutral-500'
                                 }`}
                                 variants={ANIMATION_VARIANTS.button}
@@ -68,7 +72,6 @@ const ChannelSection: React.FC<{
                                     className="relative z-10 flex items-center gap-2"
                                     animate={{ 
                                         scale: isActive ? 1.02 : 1,
-                                        filter: isActive ? 'drop-shadow(0 1px 2px rgba(0,0,0,0.2))' : 'none'
                                     }}
                                     transition={getAnimationConfig('gentle')}
                                 >
@@ -76,7 +79,7 @@ const ChannelSection: React.FC<{
                                         animate={{ rotate: isActive ? [0, 5, 0] : 0 }}
                                         transition={{ duration: 0.6, ease: 'easeOut' }}
                                     >
-                                        <HashtagIcon className="w-5 h-5 flex-shrink-0" />
+                                        <HashtagIcon className="w-4 h-4 flex-shrink-0" />
                                     </motion.div>
                                     <span className="truncate font-medium">{channel.name}</span>
                                 </motion.span>
@@ -121,7 +124,16 @@ const ChannelSection: React.FC<{
 };
 
 
-const ChannelList: React.FC<ChannelListProps> = ({ channels, currentChannelId, onSelectChannel, onAddOrUpdateChannel, allMinionNames }) => {
+const ChannelList: React.FC<ChannelListProps> = ({ 
+  channels, 
+  currentChannelId, 
+  onSelectChannel, 
+  onAddOrUpdateChannel, 
+  onDeleteChannel,
+  onCreateNewMinionChat,
+  allMinionNames, 
+  minionConfigs 
+}) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingChannel, setEditingChannel] = useState<Channel | undefined>(undefined);
     
@@ -154,7 +166,6 @@ const ChannelList: React.FC<ChannelListProps> = ({ channels, currentChannelId, o
                         title="Create New Channel"
                         variants={ANIMATION_VARIANTS.button}
                         initial="idle"
-                        whileHover="hover"
                         whileTap="tap"
                         style={{
                             backgroundColor: 'transparent'
@@ -175,6 +186,14 @@ const ChannelList: React.FC<ChannelListProps> = ({ channels, currentChannelId, o
                     </motion.button>
                 </div>
                 <div className="flex-grow p-2 overflow-y-auto scrollbar-thin scrollbar-thumb-neutral-300 scrollbar-track-transparent">
+                    <MinionBuddylist
+                        channels={channels}
+                        minionConfigs={minionConfigs}
+                        currentChannelId={currentChannelId}
+                        onSelectChannel={onSelectChannel}
+                        onCreateNewChat={onCreateNewMinionChat}
+                        onDeleteChannel={onDeleteChannel}
+                    />
                     <ChannelSection 
                         title="Direct Messages"
                         channels={dmChannels}

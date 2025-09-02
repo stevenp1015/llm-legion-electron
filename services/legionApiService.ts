@@ -122,6 +122,15 @@ class LegionApiService {
     this.init();
   }
 
+  async manuallyTriggerRegulator(channelId: string, onRegulatorReport: (reportMsg: ChatMessageData) => void, onSystemMessage: (msg: ChatMessageData) => void): Promise<void> {
+    const channel = this.channels.find(c => c.id === channelId);
+    if (!channel) return;
+
+    // We're overriding the counter, so we call the check directly.
+    await this._checkForRegulatorAction(channel, onRegulatorReport, onSystemMessage, true); // The 'true' forces it to run
+    this.saveChannels(); // Save the reset counter
+  }
+  
   async init() {
     if (this.isInitialized) return;
     
@@ -245,7 +254,15 @@ class LegionApiService {
     this.minionConfigs.forEach(m => { initialScoresForNewMinion[m.name] = 50; });
     const newMinion: MinionConfig = { ...config, id: config.id || `minion-${Date.now()}`, opinionScores: initialScoresForNewMinion, status: 'Idle', lastDiaryState: null, usageStats: { requests: [] }};
     this.minionConfigs.push(newMinion);
-    this.channels.forEach(c => { if(c.type !== 'system_log' && c.type !== 'dm') c.members.push(newMinion.name); });
+    // Only add new minions to channels they should automatically join
+    // Skip group chats, buddy chats, and let users manually add minions where they want them
+    this.channels.forEach(c => { 
+      if (c.type === 'user_minion_group' && c.name === '#general') {
+        // Only auto-add to the main #general channel
+        c.members.push(newMinion.name);
+      }
+      // Don't auto-add to other channels - let users choose
+    });
     this.saveMinionConfigs();
     this.saveChannels();
     return newMinion;
@@ -285,6 +302,35 @@ class LegionApiService {
       this.saveChannels();
       this.saveMessages();
       return newChannel;
+  }
+
+  async deleteChannel(channelId: string): Promise<void> {
+    this.channels = this.channels.filter(c => c.id !== channelId);
+    delete this.messages[channelId];
+    this.saveChannels();
+    this.saveMessages();
+  }
+
+  async bulkRemoveMinionFromChannels(minionName: string, excludeChannels: string[] = []): Promise<{ removedFromCount: number, affectedChannels: string[] }> {
+    let removedFromCount = 0;
+    const affectedChannels: string[] = [];
+    
+    this.channels.forEach(channel => {
+      const hadMinion = channel.members.includes(minionName);
+      const shouldKeep = excludeChannels.includes(channel.name);
+      
+      if (hadMinion && !shouldKeep) {
+        channel.members = channel.members.filter(member => member !== minionName);
+        removedFromCount++;
+        affectedChannels.push(channel.name);
+      }
+    });
+    
+    if (removedFromCount > 0) {
+      this.saveChannels();
+    }
+    
+    return { removedFromCount, affectedChannels };
   }
 
   // --- Message Management ---
@@ -426,6 +472,8 @@ class LegionApiService {
        return;
     }
     
+    
+    // Generate base history without per-minion filtering for initial setup
     const initialChatHistory = formatChatHistoryForLLM(this.messages[channelId], channelId);
     
     await this._runAgentLoop({
@@ -441,7 +489,7 @@ class LegionApiService {
     this.saveMessages(); // Save new messages
   }
 
-  private async _getPerceptionPlan(minion: MinionConfig, chatHistory: string, lastSenderName: string, channelType: ChannelType) {
+  private async _getPerceptionPlan(minion: MinionConfig, channelId: string, lastSenderName: string, channelType: ChannelType, dynamicHistoryForMinion?: string) {
     const keyInfo = this._selectApiKey(minion);
     const { allowed, reason } = this._checkLimits(minion.id);
     if (!allowed) return { minion, plan: null, error: `Quota limit reached: ${reason}` };
@@ -456,18 +504,21 @@ class LegionApiService {
         .map(assignedTool => allAvailableTools.find(t => t.name === assignedTool.toolName))
         .filter((t): t is McpTool => !!t);
 
+    // Use minion-specific dynamic history if provided, otherwise generate filtered history
+    const chatHistory = dynamicHistoryForMinion || formatChatHistoryForLLM(this.messages[channelId] || [], channelId, 25, minion.name);
+
     const prompt = PERCEPTION_AND_PLANNING_PROMPT_TEMPLATE( minion.name, minion.system_prompt_persona, JSON.stringify(minion.lastDiaryState || {}), JSON.stringify(minion.opinionScores, null, 2), chatHistory, lastSenderName, channelType, availableTools );
     const { data: plan, error, usage } = await callLiteLLMApiForJson<PerceptionPlan>(prompt, minion.model_id, minion.params.temperature, keyInfo.key);
     if (usage) this._updateUsage(minion.id, usage);
     return { minion, plan, error };
   }
 
-  private async _checkForRegulatorAction(channel: Channel, onRegulatorReport: (reportMsg: ChatMessageData) => void, onSystemMessage: (msg: ChatMessageData) => void) {
+  private async _checkForRegulatorAction(channel: Channel, onRegulatorReport: (reportMsg: ChatMessageData) => void, onSystemMessage: (msg: ChatMessageData) => void, force: boolean = false) {
     const regulators = this.minionConfigs.filter(m => m.role === 'regulator' && channel.members.includes(m.name));
     for (const regulator of regulators) {
-      if ((channel.messageCounter || 0) >= (regulator.regulationInterval || 10)) {
+      if (force || (channel.messageCounter || 0) >= (regulator.regulationInterval || 10)) {
         onSystemMessage({ id: `sys-reg-${Date.now()}`, channelId: channel.id, senderType: MessageSender.System, senderName: 'System', content: `Regulator ${regulator.name} is generating a status report...`, timestamp: Date.now() });
-        const history = formatChatHistoryForLLM(this.messages[channel.id] || [], channel.id, 50);
+        const history = formatChatHistoryForLLM(this.messages[channel.id] || [], channel.id, 50, regulator.name);
         const keyInfo = this._selectApiKey(regulator);
         const {data: report, error, usage} = await callLiteLLMApiForJson<RegulatorReport>(history, regulator.model_id, regulator.params.temperature, keyInfo.key, REGULATOR_SYSTEM_PROMPT);
         if (usage) this._updateUsage(regulator.id, usage);
@@ -539,15 +590,22 @@ class LegionApiService {
   }): Promise<void> {
     const { channel, minionsInChannel, initialChatHistory, lastSenderName, isAutoChat = false, onMinionResponse, onMinionResponseChunk, onMinionProcessingUpdate, onSystemMessage, onRegulatorReport, onToolUpdate } = params;
     const channelId = channel.id;
-    let dynamicChatHistory = initialChatHistory;
-    const MAX_TURNS = 5; // Safety break for tool use loops
+    
+    // Track per-minion dynamic histories instead of shared history
+    const dynamicHistoryPerMinion = new Map<string, string>();
+    minionsInChannel.forEach(minion => {
+      dynamicHistoryPerMinion.set(minion.name, initialChatHistory);
+    });
+    
+    const MAX_TURNS = 10; // Safety break for tool use loops
 
     for (let turn = 0; turn < MAX_TURNS; turn++) {
       const perceptionPromises = minionsInChannel.map(minion => {
         if (isAutoChat && minion.name === lastSenderName && minionsInChannel.length > 1) {
           return Promise.resolve({ minion, plan: null, error: "Cannot respond to self in auto-chat." });
         }
-        return this._getPerceptionPlan(minion, dynamicChatHistory, lastSenderName, channel.type);
+        const minionSpecificHistory = dynamicHistoryPerMinion.get(minion.name);
+        return this._getPerceptionPlan(minion, channelId, lastSenderName, channel.type, minionSpecificHistory);
       });
 
       const perceptionResults = await Promise.all(perceptionPromises);
@@ -590,13 +648,23 @@ class LegionApiService {
             };
             onMinionResponse(preToolMessage);
             this.messages[channelId].push(preToolMessage);
-            dynamicChatHistory += `\n[MINION ${minion.name}]: ${plan.speakWhileTooling}`;
+            
+            // Update ALL minions' histories with the speech (public message)
+            dynamicHistoryPerMinion.forEach((history, minionName) => {
+              dynamicHistoryPerMinion.set(minionName, history + `\n[MINION ${minion.name}]: ${plan.speakWhileTooling}`);
+            });
           }
 
           const toolOutput = await this._executeMcpTool(channelId, minion.name, plan.toolCall, onSystemMessage, onToolUpdate);
-          dynamicChatHistory += `\n[TOOL CALL] Minion ${minion.name} used tool: ${plan.toolCall.name}(${JSON.stringify(plan.toolCall.arguments)})`;
-          dynamicChatHistory += `\n[TOOL OUTPUT] ${toolOutput}`;
-          dynamicChatHistory += `\n[SYSTEM REMINDER]: You have just received the output from your tool call. Analyze this output and the conversation history to decide your next action. If the task is not yet complete, prioritize using another tool. Only choose to 'SPEAK' when you have all the information needed to provide a final answer.`;
+          
+          // PRIVACY FIX: Only update THIS minion's history with tool info
+          const currentHistory = dynamicHistoryPerMinion.get(minion.name) || '';
+          const updatedHistory = currentHistory + 
+            `\n[TOOL CALL] Minion ${minion.name} used tool: ${plan.toolCall.name}(${JSON.stringify(plan.toolCall.arguments)})` +
+            `\n[TOOL OUTPUT] ${toolOutput}` +
+            `\n[SYSTEM REMINDER]: You have just received the output from your tool call. Analyze this output and the conversation history to decide your next action. If the task is not yet complete, prioritize using another tool. Only choose to 'SPEAK' when you have all the information needed to provide a final answer.`;
+          dynamicHistoryPerMinion.set(minion.name, updatedHistory);
+          
           onMinionProcessingUpdate(minion.name, false); // Tool use is quick
         }
         
@@ -609,10 +677,11 @@ class LegionApiService {
             .filter(m => m.id !== minion.id && m.chatColor && m.fontColor)
             .map(m => ({ name: m.name, chatColor: m.chatColor!, fontColor: m.fontColor! }));
 
+          const minionSpecificHistory = dynamicHistoryPerMinion.get(minion.name) || '';
           const responseGenPrompt = RESPONSE_GENERATION_PROMPT_TEMPLATE(
             minion.name,
             minion.system_prompt_persona,
-            dynamicChatHistory,
+            minionSpecificHistory,
             plan,
             undefined, // toolOutput
             isFirstMessage,
@@ -624,7 +693,10 @@ class LegionApiService {
           
           const finalMessage = (this.messages[channelId] || []).find(m => m.id === tempMessageId);
           if (finalMessage) {
-            dynamicChatHistory += `\n[MINION ${minion.name}]: ${finalMessage.content}`;
+            // Update ALL minions' histories with this public speech
+            dynamicHistoryPerMinion.forEach((history, minionName) => {
+              dynamicHistoryPerMinion.set(minionName, history + `\n[MINION ${minion.name}]: ${finalMessage.content}`);
+            });
             if(channel) channel.messageCounter = (channel.messageCounter || 0) + 1;
           }
           onMinionProcessingUpdate(minion.name, false);
@@ -676,7 +748,7 @@ class LegionApiService {
                           finalContent = finalContent.replace(colorTagRegex, '').trim();
                       }
 
-                      const finalMessage: ChatMessageData = { id: messageId, channelId, senderType: MessageSender.AI, senderName: minion.name, content: finalContent, timestamp: Date.now(), internalDiary: plan, isProcessing: false, senderRole: 'standard' };
+                      const finalMessage: ChatMessageData = { id: messageId, channelId, senderType: MessageSender.AI, senderName: minion.name, content: finalContent, timestamp: Date.now(), internalDiary: plan, isProcessing: false, senderRole: 'standard', _skipContentUpdate: true };
                       onMinionResponse(finalMessage); this.updateMinionState(minion.id, plan);
                       const msgIndex = (this.messages[channelId] || []).findIndex(m => m.id === messageId);
                       if (msgIndex > -1) this.messages[channelId][msgIndex] = finalMessage; else this.messages[channelId].push(finalMessage);

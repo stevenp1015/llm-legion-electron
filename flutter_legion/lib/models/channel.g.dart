@@ -43,7 +43,7 @@ Map<String, dynamic> _$ChannelToJson(Channel instance) => <String, dynamic>{
       'isAutoModeActive': instance.isAutoModeActive,
       'autoModeDelayType': instance.autoModeDelayType,
       'autoModeFixedDelay': instance.autoModeFixedDelay,
-      'autoModeRandomDelay': instance.autoModeRandomDelay,
+      'autoModeRandomDelay': instance.autoModeRandomDelay?.toJson(),
     };
 
 const _$ChannelTypeEnumMap = {

@@ -4,7 +4,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { ChatMessageData, MessageSender, RegulatorReport, MinionConfig, ToolCall } from '../types';
 import { LEGION_COMMANDER_NAME } from '../constants';
-import { TrashIcon, PencilIcon, BookOpenIcon, UserCircleIcon, SaveIcon, XMarkIcon, ExclamationTriangleIcon, TerminalIcon, ChevronDoubleDownIcon } from './Icons';
+import { TrashIcon, PencilIcon, BookOpenIcon, UserCircleIcon, SaveIcon, XMarkIcon, ExclamationTriangleIcon, TerminalIcon } from './Icons';
 import TypingIndicator from './TypingIndicator';
 import RegulatorReportCard from './RegulatorReportCard';
 import { parseJsonFromMarkdown } from '../services/geminiService';
@@ -16,7 +16,7 @@ const DiaryCard: React.FC<{ diary: any }> = ({ diary }) => {
   const renderOpinionUpdates = () => (
     <ul className="list-none pl-0 space-y-1">
       {diary.opinionUpdates.map((update: any, index: number) => (
-        <li key={index} className="flex items-center text-xs">
+        <li key={index} className="flex items-center text-sm">
           <span className="font-semibold w-16">{update.participantName}:</span>
           <span className={`font-bold w-8 text-right pr-2 ${update.newScore > 50 ? 'text-green-400' : 'text-red-400'}`}>{update.newScore}</span>
           <span className="text-gray-400 italic">({update.reasonForChange})</span>
@@ -28,72 +28,217 @@ const DiaryCard: React.FC<{ diary: any }> = ({ diary }) => {
   return (
     <div className="space-y-2 text-sm">
       <div className="p-2 bg-gray-900/50 rounded">
-        <p className="text-xs text-gray-400 font-semibold mb-1">Perception</p>
+        <p className="text-sm text-gray-400 font-semibold mb-1">Perception</p>
         <p className="text-gray-300 italic">"{diary.perceptionAnalysis}"</p>
       </div>
       <div className="grid grid-cols-2 gap-2">
         <div className="p-2 bg-gray-900/50 rounded">
-          <p className="text-xs text-gray-400 font-semibold mb-1">Action</p>
+          <p className="text-sm text-gray-400 font-semibold mb-1">Action</p>
           <p className="font-mono font-bold text-amber-300">{diary.action}</p>
         </div>
         <div className="p-2 bg-gray-900/50 rounded">
-          <p className="text-xs text-gray-400 font-semibold mb-1">Response Mode</p>
+          <p className="text-sm text-gray-400 font-semibold mb-1">Response Mode</p>
           <p className="font-semibold text-cyan-300">{diary.selectedResponseMode}</p>
         </div>
       </div>
       <div className="p-2 bg-gray-900/50 rounded">
-        <p className="text-xs text-gray-400 font-semibold mb-1">Response Plan</p>
+        <p className="text-sm text-gray-400 font-semibold mb-1">Response Plan</p>
         <p className="text-gray-300">{diary.responsePlan || 'N/A'}</p>
       </div>
       {diary.toolCall && (
         <div className="p-2 bg-gray-900/50 rounded">
-            <p className="text-xs text-gray-400 font-semibold mb-1">Tool Call</p>
-            <pre className="text-xs text-cyan-200 whitespace-pre-wrap">
+            <p className="text-sm text-gray-400 font-semibold mb-1">Tool Call</p>
+            <pre className="text-sm text-cyan-200 whitespace-pre-wrap">
                 {diary.toolCall.name}({JSON.stringify(diary.toolCall.arguments, null, 2)})
             </pre>
         </div>
       )}
       <div className="p-2 bg-gray-900/50 rounded">
-        <p className="text-xs text-gray-400 font-semibold mb-1">Opinion Updates</p>
+        <p className="text-sm text-gray-400 font-semibold mb-1">Opinion Updates</p>
         {renderOpinionUpdates()}
       </div>
     </div>
   );
 };
 
-const ToolCallBubble: React.FC<{ toolCall: ToolCall, minionName: string }> = ({ toolCall, minionName }) => (
-  <div className="mt-1 p-2.5 rounded-lg bg-zinc-200 border border-zinc-300 tool-call-bubble">
-    <div className="flex items-center gap-2 text-xs text-zinc-600">
-      <TerminalIcon className="w-4 h-4 flex-shrink-0" />
-      <span className="font-semibold">{minionName}</span>
-      <span>is using tool:</span>
-      <span className="font-mono font-semibold text-teal-700">{toolCall.name}</span>
-    </div>
-  </div>
-);
-
-const ToolOutputBubble: React.FC<{ toolOutput: string, toolName: string }> = ({ toolOutput, toolName }) => {
+const ToolCallBubble: React.FC<{ toolCall: ToolCall, minionName: string, minionConfig?: MinionConfig }> = ({ toolCall, minionName, minionConfig }) => {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [isShimmering, setIsShimmering] = useState(false);
+  
+  // Convert hex color to RGB values for gradients
+  const hexToRgb = (hex: string) => {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result ? {
+      r: parseInt(result[1], 16),
+      g: parseInt(result[2], 16),
+      b: parseInt(result[3], 16)
+    } : { r: 59, g: 130, b: 246 }; // fallback to blue
+  };
+  
+  const handleClick = () => {
+    setIsExpanded(!isExpanded);
+    setIsShimmering(true);
+    setTimeout(() => setIsShimmering(false), 300);
+  };
+  
+  // Get minion's color or fallback to blue
+  const minionColor = minionConfig?.chatColor || '#3B82F6';
+  const rgb = hexToRgb(minionColor);
+  
+  // Create lighter version for background (15% opacity)
+  const lightBgColor = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.02)`;
+  
   return (
-    <div className="mt-1 p-2.5 rounded-lg bg-zinc-200 border border-zinc-300 tool-output-bubble">
-      <button onClick={() => setIsExpanded(!isExpanded)} className="w-full flex items-center justify-between text-xs text-zinc-600">
-        <div className="flex items-center gap-2">
+    <div className="mt-1 max-w-full">
+      <motion.button 
+        onClick={handleClick}
+        className="w-full p-2.5 rounded-lg border border-opacity-30 tool-call-bubble relative overflow-hidden cursor-pointer group transition-all duration-300"
+        style={{ 
+          backgroundColor: lightBgColor,
+          borderColor: `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.3)`
+        }}
+        layout="position"
+      >
+        <div className="flex items-center gap-2 text-sm text-zinc-600 relative z-10">
+          <TerminalIcon className="w-4 h-4 flex-shrink-0" />
+          <span className="font-semibold">{minionName}</span>
+          <span>is using tool:</span>
+          <span className="font-mono font-semibold text-teal-700">{toolCall.name}</span>
+        </div>
+        
+        {/* Dynamic feathered glow effect at bottom */}
+        <div 
+          className="absolute bottom-0 left-0 right-0 h-6 rounded-b-lg opacity-50 group-hover:opacity-80 transition-opacity duration-300"
+          style={{
+            background: `linear-gradient(to top, rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.4), rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.2), transparent)`
+          }}
+        />
+        <div 
+          className="absolute bottom-0 left-0 right-0 h-4 rounded-b-lg opacity-20 group-hover:opacity-60 transition-opacity duration-300"
+          style={{
+            background: `linear-gradient(to top, rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.6), rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.3), transparent)`
+          }}
+        />
+        
+        {/* Sliding shimmer effect */}
+        {isShimmering && (
+          <motion.div
+            className="absolute inset-0 rounded-lg"
+            style={{
+              background: `linear-gradient(90deg, transparent, rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.4), transparent)`
+            }}
+            initial={{ x: '-100%' }}
+            animate={{ x: '100%' }}
+            transition={{ duration: 0.3, ease: 'linear' }}
+          />
+        )}
+      </motion.button>
+      
+      <AnimatePresence>
+        {isExpanded && (
+          <motion.div 
+            initial={{ height: 0, opacity: 0, scaleY: 0.8 }}
+            animate={{ height: 'auto', opacity: 1, scaleY: 1 }}
+            exit={{ height: 0, opacity: 0, scaleY: 0.8 }}
+            transition={{ duration: 0.3, ease: 'easeOut' }}
+            className="overflow-hidden mt-2 origin-top"
+            style={{ width: '100%' }}
+          >
+            <div className="p-3 bg-zinc-100 border border-zinc-300 rounded-lg text-sm">
+              <div className="font-semibold text-teal-700 mb-2">Tool Parameters:</div>
+              <pre className="text-zinc-700 whitespace-pre-wrap font-mono text-sm break-all">
+                {JSON.stringify(toolCall.arguments, null, 2)}
+              </pre>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
+const ToolOutputBubble: React.FC<{ toolOutput: string, toolName: string, minionConfig?: MinionConfig }> = ({ toolOutput, toolName, minionConfig }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [isShimmering, setIsShimmering] = useState(false);
+  
+  // Convert hex color to RGB values for gradients
+  const hexToRgb = (hex: string) => {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result ? {
+      r: parseInt(result[1], 16),
+      g: parseInt(result[2], 16),
+      b: parseInt(result[3], 16)
+    } : { r: 16, g: 185, b: 129 }; // fallback to green
+  };
+  
+  const handleClick = () => {
+    setIsExpanded(!isExpanded);
+    setIsShimmering(true);
+    setTimeout(() => setIsShimmering(false), 300);
+  };
+  
+  // Get minion's color or fallback to green, make it darker for "completion" feel
+  const minionColor = minionConfig?.chatColor || '#10B981';
+  const rgb = hexToRgb(minionColor);
+  // Make it darker by reducing RGB values by 20%
+  const darkerRgb = {
+    r: Math.round(rgb.r * 0.9),
+    g: Math.round(rgb.g * 0.9),
+    b: Math.round(rgb.b * 0.9)
+  };
+  
+  return (
+    <div className="mt-1 relative">
+      <button 
+        onClick={handleClick} 
+        className="w-full p-2.5 rounded-lg tool-output-bubble  relative overflow-hidden cursor-pointer group"
+      >
+        <div className="flex items-center gap-2 text-sm text-zinc-600">
           <span className="font-semibold">[TOOL OUTPUT]</span>
           <span>Results for</span>
           <span className="font-mono font-semibold text-teal-700">{toolName}</span>
         </div>
-        <ChevronDoubleDownIcon className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+        
+        {/* Dynamic feathered glow effect at bottom - darker for "completion" feel */}
+        <div 
+          className="absolute bottom-0 left-0 right-0 h-6 rounded-t-lg opacity-50 group-hover:opacity-80 transition-opacity duration-300"
+          style={{
+            background: `linear-gradient(to top, rgba(${darkerRgb.r}, ${darkerRgb.g}, ${darkerRgb.b}, 0.5), rgba(${darkerRgb.r}, ${darkerRgb.g}, ${darkerRgb.b}, 0.25), transparent)`
+          }}
+        />
+        <div 
+          className="absolute bottom-0 left-0 right-0 h-4 rounded-t-lg opacity-20 group-hover:opacity-60 transition-opacity duration-300"
+          style={{
+            background: `linear-gradient(to top, rgba(${darkerRgb.r}, ${darkerRgb.g}, ${darkerRgb.b}, 0.7), rgba(${darkerRgb.r}, ${darkerRgb.g}, ${darkerRgb.b}, 0.4), transparent)`
+          }}
+        />
+        
+        {/* Sliding shimmer effect */}
+        {isShimmering && (
+          <motion.div
+            className="absolute inset-0 rounded-lg"
+            style={{
+              background: `linear-gradient(90deg, transparent, rgba(${darkerRgb.r}, ${darkerRgb.g}, ${darkerRgb.b}, 0.5), transparent)`
+            }}
+            initial={{ x: '-100%' }}
+            animate={{ x: '100%' }}
+            transition={{ duration: 0.3, ease: 'linear' }}
+          />
+        )}
       </button>
+      
       <AnimatePresence>
         {isExpanded && (
           <motion.div 
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            className="overflow-hidden"
+            initial={{ height: 0, opacity: 0, scaleY: 0.8 }}
+            animate={{ height: 'auto', opacity: 1, scaleY: 1 }}
+            exit={{ height: 0, opacity: 0, scaleY: 0.8 }}
+            transition={{ duration: 0.3, ease: 'easeOut' }}
+            className="overflow-hidden mt-2 origin-top"
+            style={{ width: '100%' }}
           >
-            <div className="mt-2 pt-2 border-t border-zinc-300">
-              <div className="prose prose-sm max-w-none">
+            <div className="p-3 bg-zinc-100 border border-zinc-300 rounded-lg">
+              <div className="prose prose-sm max-w-none break-words">
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>{toolOutput}</ReactMarkdown>
               </div>
             </div>
@@ -212,7 +357,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
   };
 
   const getNameClasses = () => {
-    const base = 'text-xs font-semibold';
+    const base = 'text-sm font-semibold';
     if (isUser) return `${base} text-amber-100`;
     if (isRegulator) return `${base} text-teal-700`;
     if (isMinion && !isRegulator && minionConfig?.fontColor) return base;
@@ -220,7 +365,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
   };
 
   const getTimeClasses = () => {
-    const base = 'text-xs ml-2';
+    const base = 'text-sm ml-2';
     if (isUser) return `${base} text-amber-100`;
     if (isMinion && !isRegulator && (minionConfig?.fontColor || minionConfig?.chatColor)) return base;
     return `${base} text-neutral-400`;
@@ -264,8 +409,8 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
   
   if (isSystem) {
     const style = message.isError 
-      ? "px-4 py-2 text-center text-xs text-red-600 bg-red-100 rounded-md" 
-      : "px-4 py-2 text-center text-xs text-neutral-500 bg-neutral-100/50 rounded-md";
+      ? "px-4 py-2 text-center text-sm text-red-600 bg-red-100 rounded-md" 
+      : "px-4 py-2 text-center text-sm text-neutral-500 bg-neutral-100/50 rounded-md";
       
     return (
       <motion.div 
@@ -300,10 +445,10 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
         </div>
         <div className="w-full max-w-[80%] flex flex-col items-start">
           {message.isToolCall && message.toolCall && (
-            <ToolCallBubble toolCall={message.toolCall} minionName={message.senderName} />
+            <ToolCallBubble toolCall={message.toolCall} minionName={message.senderName} minionConfig={minionConfig} />
           )}
           {message.isToolOutput && message.toolCall && message.toolOutput && (
-            <ToolOutputBubble toolOutput={message.toolOutput} toolName={message.toolCall.name} />
+            <ToolOutputBubble toolOutput={message.toolOutput} toolName={message.toolCall.name} minionConfig={minionConfig} />
           )}
         </div>
       </motion.div>
@@ -379,7 +524,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
         </motion.div>
         <div className={`w-full max-w-[70%] flex flex-col items-start`}>
             <motion.span 
-              className="text-xs text-neutral-500 ml-2 mb-0.5"
+              className="text-sm text-neutral-500 ml-2 mb-0.5"
               initial={{ opacity: 0, y: 5 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2, ...getAnimationConfig('gentle') }}
@@ -457,7 +602,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                   className="w-full origin-bottom"
                 >
                   <div className="p-3 bg-gray-800 text-gray-200 border border-gray-700 rounded-md shadow-lg">
-                    <h4 className="text-xs font-semibold text-teal-400 mb-2">Internal Diary ({message.senderName})</h4>
+                    <h4 className="text-sm font-semibold text-teal-400 mb-2">Internal Diary ({message.senderName})</h4>
                     <DiaryCard diary={message.internalDiary} />
                   </div>
                 </motion.div>
@@ -499,10 +644,9 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                 >
                   <motion.button 
                     onClick={handleCancelEdit} 
-                    className="px-3 py-1 text-xs bg-neutral-400 text-white rounded-md"
+                    className="px-3 py-1 text-sm bg-neutral-400 text-white rounded-md"
                     variants={ANIMATION_VARIANTS.button}
                     initial="idle"
-                    whileHover="hover"
                     whileTap="tap"
                     whileHover={{
                       backgroundColor: 'rgb(115, 115, 115)',
@@ -519,10 +663,9 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
                   </motion.button>
                   <motion.button 
                     onClick={handleEdit} 
-                    className="px-3 py-1 text-xs bg-amber-500 text-white rounded-md"
+                    className="px-3 py-1 text-sm bg-amber-500 text-white rounded-md"
                     variants={ANIMATION_VARIANTS.button}
                     initial="idle"
-                    whileHover="hover"
                     whileTap="tap"
                     whileHover={{
                       backgroundColor: 'rgb(217, 119, 6)',
@@ -555,7 +698,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
             )}
             
             {message.isError && !message.isToolOutput && (
-              <div className="mt-2 p-2 bg-red-100 border border-red-300 rounded text-xs text-red-800 flex items-start gap-1">
+              <div className="mt-2 p-2 bg-red-100 border border-red-300 rounded text-sm text-red-800 flex items-start gap-1">
                 <ExclamationTriangleIcon className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
                 <span>{message.content}</span>
               </div>

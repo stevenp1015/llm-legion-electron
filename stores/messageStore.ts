@@ -110,7 +110,16 @@ export const useMessageStore = create<MessageStore>()(
         
         if (existingMsgIndex > -1) {
           const newChannelMessages = [...channelMessages];
-          newChannelMessages[existingMsgIndex] = { ...newChannelMessages[existingMsgIndex], ...message };
+          const existingMessage = newChannelMessages[existingMsgIndex];
+          
+          // If _skipContentUpdate is true, preserve existing content to avoid duplication
+          if (message._skipContentUpdate && existingMessage.content) {
+            const { content, _skipContentUpdate, ...updateFields } = message;
+            newChannelMessages[existingMsgIndex] = { ...existingMessage, ...updateFields };
+          } else {
+            newChannelMessages[existingMsgIndex] = { ...existingMessage, ...message };
+          }
+          
           return {
             messages: {
               ...state.messages,
