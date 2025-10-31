@@ -11,7 +11,8 @@ class MinionEditDialog extends StatefulWidget {
 
   const MinionEditDialog({super.key, required this.initial});
 
-  static Future<MinionConfig?> show(BuildContext context, MinionConfig initial) {
+  static Future<MinionConfig?> show(
+      BuildContext context, MinionConfig initial) {
     return showDialog<MinionConfig>(
       context: context,
       barrierDismissible: true,
@@ -70,7 +71,8 @@ class _MinionEditDialogState extends State<MinionEditDialog> {
     _isRegulator = (m.role.toLowerCase() == 'regulator');
     _regInterval = m.regulationInterval ?? 10;
     if (m.mcpTools != null && m.mcpTools!['toolNames'] is List) {
-      _selectedToolNames = ((m.mcpTools!['toolNames'] as List).map((e) => e.toString())).toSet();
+      _selectedToolNames =
+          ((m.mcpTools!['toolNames'] as List).map((e) => e.toString())).toSet();
     }
 
     _loadMeta();
@@ -121,7 +123,6 @@ class _MinionEditDialogState extends State<MinionEditDialog> {
             ],
           ),
           const SizedBox(height: 12),
-
           if (_loading)
             const Padding(
               padding: EdgeInsets.all(24),
@@ -138,7 +139,8 @@ class _MinionEditDialogState extends State<MinionEditDialog> {
                         Expanded(
                           child: TextField(
                             controller: _name,
-                            decoration: const InputDecoration(labelText: 'Name'),
+                            decoration:
+                                const InputDecoration(labelText: 'Name'),
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -146,11 +148,15 @@ class _MinionEditDialogState extends State<MinionEditDialog> {
                           child: DropdownButtonFormField<String>(
                             value: _isRegulator ? 'regulator' : 'standard',
                             items: const [
-                              DropdownMenuItem(value: 'standard', child: Text('Standard')),
-                              DropdownMenuItem(value: 'regulator', child: Text('Regulator')),
+                              DropdownMenuItem(
+                                  value: 'standard', child: Text('Standard')),
+                              DropdownMenuItem(
+                                  value: 'regulator', child: Text('Regulator')),
                             ],
-                            onChanged: (v) => setState(() => _isRegulator = (v == 'regulator')),
-                            decoration: const InputDecoration(labelText: 'Role'),
+                            onChanged: (v) => setState(
+                                () => _isRegulator = (v == 'regulator')),
+                            decoration:
+                                const InputDecoration(labelText: 'Role'),
                           ),
                         ),
                       ],
@@ -160,8 +166,10 @@ class _MinionEditDialogState extends State<MinionEditDialog> {
                       TextFormField(
                         initialValue: _regInterval.toString(),
                         keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(labelText: 'Regulator interval (messages)'),
-                        onChanged: (v) => _regInterval = int.tryParse(v) ?? _regInterval,
+                        decoration: const InputDecoration(
+                            labelText: 'Regulator interval (messages)'),
+                        onChanged: (v) =>
+                            _regInterval = int.tryParse(v) ?? _regInterval,
                       ),
                     ],
                     const SizedBox(height: 12),
@@ -172,13 +180,22 @@ class _MinionEditDialogState extends State<MinionEditDialog> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               DropdownButtonFormField<String>(
-                                value: _useCustomModel ? 'custom-model-entry' : (_model.isNotEmpty ? _model : (_models.isNotEmpty ? _models.first.id : '')),
+                                value: _useCustomModel
+                                    ? 'custom-model-entry'
+                                    : (_model.isNotEmpty
+                                        ? _model
+                                        : (_models.isNotEmpty
+                                            ? _models.first.id
+                                            : '')),
                                 items: [
                                   ..._models.map((m) => DropdownMenuItem(
                                         value: m.id,
-                                        child: Text('${m.name} (${m.provider})'),
+                                        child:
+                                            Text('${m.name} (${m.provider})'),
                                       )),
-                                  const DropdownMenuItem(value: 'custom-model-entry', child: Text('Custom Model...')),
+                                  const DropdownMenuItem(
+                                      value: 'custom-model-entry',
+                                      child: Text('Custom Model...')),
                                 ],
                                 onChanged: (v) => setState(() {
                                   if (v == 'custom-model-entry') {
@@ -188,13 +205,16 @@ class _MinionEditDialogState extends State<MinionEditDialog> {
                                     _model = v ?? _model;
                                   }
                                 }),
-                                decoration: const InputDecoration(labelText: 'Model'),
+                                isExpanded: true,
+                                decoration:
+                                    const InputDecoration(labelText: 'Model'),
                               ),
                               if (_useCustomModel)
                                 Padding(
                                   padding: const EdgeInsets.only(top: 8),
                                   child: TextField(
-                                    decoration: const InputDecoration(labelText: 'Custom Model ID'),
+                                    decoration: const InputDecoration(
+                                        labelText: 'Custom Model ID'),
                                     onChanged: (v) => _customModelId = v,
                                   ),
                                 ),
@@ -203,9 +223,15 @@ class _MinionEditDialogState extends State<MinionEditDialog> {
                                   const Spacer(),
                                   TextButton(
                                     onPressed: () async {
-                                      await context.read<LegionApiService>().refreshModelsFromLiteLLM();
-                                      final models = await context.read<LegionApiService>().getModelOptions();
-                                      if (mounted) setState(() => _models = models);
+                                      await context
+                                          .read<LegionApiService>()
+                                          .refreshModelsFromLiteLLM();
+                                      final models = await context
+                                          .read<LegionApiService>()
+                                          .getModelOptions();
+                                      if (mounted) {
+                                        setState(() => _models = models);
+                                      }
                                     },
                                     child: const Text('Refresh Models'),
                                   ),
@@ -217,15 +243,20 @@ class _MinionEditDialogState extends State<MinionEditDialog> {
                         const SizedBox(width: 12),
                         Expanded(
                           child: DropdownButtonFormField<String>(
-                            value: _apiKeyId.isNotEmpty ? _apiKeyId : _apiKeys.first.id,
+                            value: _apiKeyId.isNotEmpty
+                                ? _apiKeyId
+                                : _apiKeys.first.id,
                             items: _apiKeys
                                 .map((k) => DropdownMenuItem(
                                       value: k.id,
-                                      child: Text('${k.name} (${k.keyPreview})'),
+                                      child:
+                                          Text('${k.name} (${k.keyPreview})'),
                                     ))
                                 .toList(),
-                            onChanged: (v) => setState(() => _apiKeyId = v ?? _apiKeyId),
-                            decoration: const InputDecoration(labelText: 'API Key'),
+                            onChanged: (v) =>
+                                setState(() => _apiKeyId = v ?? _apiKeyId),
+                            decoration:
+                                const InputDecoration(labelText: 'API Key'),
                           ),
                         ),
                       ],
@@ -237,17 +268,28 @@ class _MinionEditDialogState extends State<MinionEditDialog> {
                         children: _toolsByServer.entries.map((entry) {
                           final serverId = entry.key;
                           final tools = entry.value;
-                          final serverName = tools.isNotEmpty ? (tools.first.serverName ?? serverId) : serverId;
+                          final serverName = tools.isNotEmpty
+                              ? tools.first.serverName
+                              : serverId;
                           return ExpansionTile(
                             title: Text(serverName),
-                            children: tools.map((t) => CheckboxListTile(
-                                  value: _selectedToolNames.contains(t.name),
-                                  onChanged: (v) => setState(() {
-                                    if (v == true) _selectedToolNames.add(t.name); else _selectedToolNames.remove(t.name);
-                                  }),
-                                  title: Text(t.name),
-                                  subtitle: t.description != null ? Text(t.description!) : null,
-                                )).toList(),
+                            children: tools
+                                .map((t) => CheckboxListTile(
+                                      value:
+                                          _selectedToolNames.contains(t.name),
+                                      onChanged: (v) => setState(() {
+                                        if (v == true) {
+                                          _selectedToolNames.add(t.name);
+                                        } else {
+                                          _selectedToolNames.remove(t.name);
+                                        }
+                                      }),
+                                      title: Text(t.name),
+                                      subtitle: t.description != null
+                                          ? Text(t.description!)
+                                          : null,
+                                    ))
+                                .toList(),
                           );
                         }).toList(),
                       ),
@@ -283,7 +325,8 @@ class _MinionEditDialogState extends State<MinionEditDialog> {
                               const Text('Temperature'),
                               Slider(
                                 value: _temperature,
-                                onChanged: (v) => setState(() => _temperature = v),
+                                onChanged: (v) =>
+                                    setState(() => _temperature = v),
                                 min: 0.0,
                                 max: 1.0,
                                 divisions: 20,
@@ -296,7 +339,8 @@ class _MinionEditDialogState extends State<MinionEditDialog> {
                         Expanded(
                           child: TextField(
                             controller: _maxTokens,
-                            decoration: const InputDecoration(labelText: 'Max Tokens'),
+                            decoration:
+                                const InputDecoration(labelText: 'Max Tokens'),
                             keyboardType: TextInputType.number,
                           ),
                         ),
@@ -315,14 +359,21 @@ class _MinionEditDialogState extends State<MinionEditDialog> {
                           child: DropdownButtonFormField<String>(
                             value: _selectedPresetId,
                             items: _presets
-                                .map((p) => DropdownMenuItem(value: p.id, child: Text('Preset: ${p.name}')))
+                                .map((p) => DropdownMenuItem(
+                                    value: p.id,
+                                    child: Text('Preset: ${p.name}')))
                                 .toList(),
                             onChanged: (v) => setState(() {
                               _selectedPresetId = v;
-                              final p = _presets.firstWhere((e) => e.id == v, orElse: () => PromptPreset(id: '', name: '', content: ''));
-                              if (p.id.isNotEmpty) _systemPrompt.text = p.content;
+                              final p = _presets.firstWhere((e) => e.id == v,
+                                  orElse: () => PromptPreset(
+                                      id: '', name: '', content: ''));
+                              if (p.id.isNotEmpty) {
+                                _systemPrompt.text = p.content;
+                              }
                             }),
-                            decoration: const InputDecoration(labelText: 'Load a preset'),
+                            decoration: const InputDecoration(
+                                labelText: 'Load a preset'),
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -336,21 +387,38 @@ class _MinionEditDialogState extends State<MinionEditDialog> {
                                   width: 500,
                                   height: 300,
                                   child: ListView(
-                                    children: _presets.map((p) => ListTile(
-                                      title: Text(p.name),
-                                      subtitle: Text(p.content, maxLines: 2, overflow: TextOverflow.ellipsis),
-                                      trailing: IconButton(
-                                        icon: const Icon(Icons.delete_outline),
-                                        onPressed: () async {
-                                          await context.read<LegionApiService>().deletePromptPreset(p.id);
-                                          final updated = await context.read<LegionApiService>().getPromptPresets();
-                                          if (mounted) setState(() => _presets = updated);
-                                        },
-                                      ),
-                                    )).toList(),
+                                    children: _presets
+                                        .map((p) => ListTile(
+                                              title: Text(p.name),
+                                              subtitle: Text(p.content,
+                                                  maxLines: 2,
+                                                  overflow:
+                                                      TextOverflow.ellipsis),
+                                              trailing: IconButton(
+                                                icon: const Icon(
+                                                    Icons.delete_outline),
+                                                onPressed: () async {
+                                                  await context
+                                                      .read<LegionApiService>()
+                                                      .deletePromptPreset(p.id);
+                                                  final updated = await context
+                                                      .read<LegionApiService>()
+                                                      .getPromptPresets();
+                                                  if (mounted) {
+                                                    setState(() =>
+                                                        _presets = updated);
+                                                  }
+                                                },
+                                              ),
+                                            ))
+                                        .toList(),
                                   ),
                                 ),
-                                actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close'))],
+                                actions: [
+                                  TextButton(
+                                      onPressed: () => Navigator.pop(ctx),
+                                      child: const Text('Close'))
+                                ],
                               ),
                             );
                           },
@@ -372,7 +440,8 @@ class _MinionEditDialogState extends State<MinionEditDialog> {
                       children: [
                         Expanded(
                           child: TextField(
-                            decoration: const InputDecoration(labelText: 'New preset name'),
+                            decoration: const InputDecoration(
+                                labelText: 'New preset name'),
                             onChanged: (v) => _newPresetName = v,
                           ),
                         ),
@@ -380,8 +449,13 @@ class _MinionEditDialogState extends State<MinionEditDialog> {
                         ElevatedButton(
                           onPressed: () async {
                             if (_newPresetName.trim().isEmpty) return;
-                            await context.read<LegionApiService>().addPromptPreset(_newPresetName.trim(), _systemPrompt.text);
-                            final updated = await context.read<LegionApiService>().getPromptPresets();
+                            await context
+                                .read<LegionApiService>()
+                                .addPromptPreset(
+                                    _newPresetName.trim(), _systemPrompt.text);
+                            final updated = await context
+                                .read<LegionApiService>()
+                                .getPromptPresets();
                             setState(() {
                               _presets = updated;
                               _newPresetName = '';
@@ -395,7 +469,6 @@ class _MinionEditDialogState extends State<MinionEditDialog> {
                 ),
               ),
             ),
-
           const SizedBox(height: 16),
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
@@ -411,32 +484,52 @@ class _MinionEditDialogState extends State<MinionEditDialog> {
                   if (name.isEmpty) return;
                   // Uniqueness validation
                   final existing = context.read<AppProvider>().minionConfigs;
-                  final conflict = existing.any((m) => m.name.toLowerCase() == name.toLowerCase() && m.id != widget.initial.id);
+                  final conflict = existing.any((m) =>
+                      m.name.toLowerCase() == name.toLowerCase() &&
+                      m.id != widget.initial.id);
                   if (conflict) {
                     if (mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Minion name must be unique.')),
+                        const SnackBar(
+                            content: Text('Minion name must be unique.')),
                       );
                     }
                     return;
                   }
-                  final modelId = _useCustomModel ? _customModelId.trim() : (_model.isNotEmpty ? _model : (_models.isNotEmpty ? _models.first.id : ''));
+                  final modelId = _useCustomModel
+                      ? _customModelId.trim()
+                      : (_model.isNotEmpty
+                          ? _model
+                          : (_models.isNotEmpty ? _models.first.id : ''));
                   final updated = widget.initial.copyWith(
                     name: name,
                     role: _isRegulator ? 'regulator' : 'standard',
-                    systemPrompt: _systemPrompt.text.isNotEmpty ? _systemPrompt.text : 'You are an AI minion created by Steven, the Commander of the Gemini Legion of which you are a member. You are not a boring ass sterile AI assistant, you aim to mimic real authentic human dialogue and conversation flow naturally. Keep your messages relatively brief, like a real-time chat.',
+                    systemPrompt: _systemPrompt.text.isNotEmpty
+                        ? _systemPrompt.text
+                        : 'You are an AI minion created by Steven, the Commander of the Gemini Legion of which you are a member. You are not a boring ass sterile AI assistant, you aim to mimic real authentic human dialogue and conversation flow naturally. Keep your messages relatively brief, like a real-time chat.',
                     model: modelId,
                     apiKeyId: _apiKeyId,
-                    chatColor: _chatColor.text.trim().isEmpty ? null : _chatColor.text.trim(),
-                    fontColor: _fontColor.text.trim().isEmpty ? null : _fontColor.text.trim(),
+                    chatColor: _chatColor.text.trim().isEmpty
+                        ? null
+                        : _chatColor.text.trim(),
+                    fontColor: _fontColor.text.trim().isEmpty
+                        ? null
+                        : _fontColor.text.trim(),
                     temperature: _temperature,
-                    maxTokens: int.tryParse(_maxTokens.text.trim()) ?? widget.initial.maxTokens,
+                    maxTokens: int.tryParse(_maxTokens.text.trim()) ??
+                        widget.initial.maxTokens,
                     enabled: _enabled,
                     mcpTools: {
                       'toolNames': _selectedToolNames.toList(),
                     },
                     regulationInterval: _isRegulator ? _regInterval : null,
                   );
+
+                  if (widget.initial.id.isEmpty) {
+                    if (!mounted) return;
+                    Navigator.of(context).pop(updated);
+                    return;
+                  }
 
                   final service = context.read<LegionApiService>();
                   final saved = await service.updateMinion(updated);

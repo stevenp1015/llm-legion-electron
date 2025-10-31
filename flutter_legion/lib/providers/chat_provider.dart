@@ -1,14 +1,10 @@
 import 'package:flutter/foundation.dart';
-import 'package:uuid/uuid.dart';
 import '../models/chat_message.dart';
-import '../models/channel.dart';
-import '../models/minion_config.dart';
 
 import '../services/legion_api_service.dart';
 
 class ChatProvider extends ChangeNotifier {
-  static const _uuid = Uuid();
-  final LegionApiService _legionApiService;
+  LegionApiService _legionApiService;
   
   // Core state
   final Map<String, List<ChatMessage>> _channelMessages = {};
@@ -27,6 +23,11 @@ class ChatProvider extends ChangeNotifier {
   final Map<String, bool> _activeMinionProcessors = {};
 
   ChatProvider(this._legionApiService);
+
+  void replaceApi(LegionApiService api) {
+    if (identical(_legionApiService, api)) return;
+    _legionApiService = api;
+  }
 
   // Getters
   List<ChatMessage> getChannelMessages(String? channelId) {
@@ -166,33 +167,71 @@ class ChatProvider extends ChangeNotifier {
     if (!_isSelectionMode) {
       clearSelection();
     }
-    notifyListeners();
+    // Selection management
   }
 
   void selectMessage(String messageId) {
+    // Toggle single message selection
     if (_selectedMessageIds.contains(messageId)) {
       _selectedMessageIds.remove(messageId);
     } else {
       _selectedMessageIds.add(messageId);
     }
     _lastSelectedMessageId = messageId;
+    
+    // Update selection mode state based on whether we have any selections
+    _isSelectionMode = _selectedMessageIds.isNotEmpty;
+    
     notifyListeners();
   }
-
-  void selectMessageRange(String fromId, String toId, List<ChatMessage> messages) {
-    final fromIndex = messages.indexWhere((m) => m.id == fromId);
-    final toIndex = messages.indexWhere((m) => m.id == toId);
+  
+  void selectMessageRange(String startId, String endId, List<ChatMessage> messages) {
+    if (messages.isEmpty) return;
     
-    if (fromIndex != -1 && toIndex != -1) {
-      final start = fromIndex < toIndex ? fromIndex : toIndex;
-      final end = fromIndex < toIndex ? toIndex : fromIndex;
-      
-      for (int i = start; i <= end; i++) {
-        _selectedMessageIds.add(messages[i].id);
-      }
-      _lastSelectedMessageId = toId;
-      notifyListeners();
+    // Find the indices of the start and end messages
+    final startIndex = messages.indexWhere((m) => m.id == startId);
+    final endIndex = messages.indexWhere((m) => m.id == endId);
+    
+    if (startIndex == -1 || endIndex == -1) return;
+    
+    // Determine the range (inclusive of both start and end)
+    final start = startIndex < endIndex ? startIndex : endIndex;
+    final end = startIndex < endIndex ? endIndex : startIndex;
+    
+    // Add all messages in range to the selection
+    for (int i = start; i <= end; i++) {
+      _selectedMessageIds.add(messages[i].id);
     }
+    
+    // Update the last selected message
+    _lastSelectedMessageId = endId;
+    
+    // Ensure selection mode is active
+    _isSelectionMode = true;
+    
+    notifyListeners();
+  }
+  
+  void toggleBulkDiaryVisibility() {
+    if (_selectedMessageIds.isEmpty) {
+      _bulkDiaryVisible.clear();
+    } else {
+      // If any selected message has its diary hidden, show all
+      final shouldShow = _selectedMessageIds.any((id) => !_bulkDiaryVisible.contains(id));
+      
+      for (final id in _selectedMessageIds) {
+        if (shouldShow) {
+          _bulkDiaryVisible.add(id);
+        } else {
+          _bulkDiaryVisible.remove(id);
+        }
+      }
+    }
+    notifyListeners();
+  }
+  
+  bool isBulkDiaryVisible(String messageId) {
+    return _bulkDiaryVisible.contains(messageId);
   }
 
   void clearSelection() {

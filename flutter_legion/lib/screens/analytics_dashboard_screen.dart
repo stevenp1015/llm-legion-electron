@@ -1,15 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:macos_ui/macos_ui.dart';
 import 'package:provider/provider.dart';
 import '../models/minion_config.dart';
 import '../providers/app_provider.dart';
-import '../theming/vista_effects.dart';
 
 class AnalyticsDashboardScreen extends StatelessWidget {
   const AnalyticsDashboardScreen({super.key});
 
   static Future<void> show(BuildContext context) {
-    return showDialog(
+    return showMacosSheet<void>(
       context: context,
+      barrierDismissible: true,
       builder: (_) => const AnalyticsDashboardScreen(),
     );
   }
@@ -17,66 +18,108 @@ class AnalyticsDashboardScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final minions = context.watch<AppProvider>().minionConfigs;
+    final typography = MacosTheme.of(context).typography;
 
-    return VistaModal(
-      onDismiss: () => Navigator.of(context).pop(),
-      child: Container(
-        width: MediaQuery.of(context).size.width * 0.7,
-        height: MediaQuery.of(context).size.height * 0.8,
-        child: VistaPanel(
-          title: 'Analytics Dashboard',
-          child: minions.isEmpty
-              ? const Center(child: Text('No minion data to display.'))
-              : ListView(
-                  padding: const EdgeInsets.all(24.0),
-                  children: [
-                    Text(
-                      'Minion Performance Overview',
-                      style: Theme.of(context).textTheme.headlineMedium,
-                    ),
-                    const SizedBox(height: 24),
-                    ...minions.map((minion) => _buildMinionStatCard(context, minion)),
-                  ],
-                ),
+    return MacosSheet(
+      child: SizedBox(
+        width: 680,
+        height: 520,
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Text('Analytics Dashboard', style: typography.title1),
+                  const Spacer(),
+                  PushButton(
+                    controlSize: ControlSize.small,
+                    secondary: true,
+                    onPressed: () => Navigator.of(context).maybePop(),
+                    child: const Text('Close'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Expanded(
+                child: minions.isEmpty
+                    ? Center(
+                        child: Text(
+                          'No minion data to display yet.',
+                          style: typography.subheadline,
+                        ),
+                      )
+                    : MacosScrollbar(
+                        child: ListView.separated(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          itemCount: minions.length,
+                          separatorBuilder: (_, __) => const SizedBox(height: 12),
+                          itemBuilder: (context, index) {
+                            return _MinionStatCard(minion: minions[index]);
+                          },
+                        ),
+                      ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
+}
 
-  Widget _buildMinionStatCard(BuildContext context, MinionConfig minion) {
-    final theme = Theme.of(context);
-    final stats = minion.usageStats ?? const UsageStats(totalTokens: 0, totalRequests: 0, totalCost: 0, lastUsed: null);
+class _MinionStatCard extends StatelessWidget {
+  const _MinionStatCard({required this.minion});
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 16),
-      elevation: 4,
-      shape: RoundedRectangleBorder(
+  final MinionConfig minion;
+
+  @override
+  Widget build(BuildContext context) {
+    final typography = MacosTheme.of(context).typography;
+    final theme = MacosTheme.of(context);
+    final stats = minion.usageStats ?? const UsageStats(
+      totalTokens: 0,
+      totalRequests: 0,
+      totalCost: 0,
+      lastUsed: null,
+    );
+    final nameColor = _parseHexColor(minion.chatColor, theme.primaryColor);
+    final background = theme.brightness == Brightness.dark
+        ? const Color(0xFF1F1F24)
+        : const Color(0xFFF7F7F9);
+    final borderColor = theme.dividerColor.withValues(alpha: 0.5);
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: background,
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: theme.colorScheme.outline.withOpacity(0.5)),
+        border: Border.all(color: borderColor),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(20.0),
+        padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               minion.name,
-              style: theme.textTheme.titleLarge?.copyWith(
-                color: Color(int.parse(minion.chatColor.replaceFirst('#', '0xFF'))),
-              ),
+              style: typography.title2.copyWith(color: nameColor),
             ),
             const SizedBox(height: 4),
             Text(
               minion.role,
-              style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.secondary),
+              style: typography.caption1,
             ),
-            const Divider(height: 32),
+            const SizedBox(height: 16),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _buildStatItem('Total Requests', stats.totalRequests.toString()),
-                _buildStatItem('Total Tokens', stats.totalTokens.toString()),
-                _buildStatItem('Total Cost', '\$${stats.totalCost.toStringAsFixed(2)}'),
+                _StatItem(label: 'Total Requests', value: stats.totalRequests.toString()),
+                _StatItem(label: 'Total Tokens', value: stats.totalTokens.toString()),
+                _StatItem(
+                  label: 'Total Cost',
+                  value: '\$${stats.totalCost.toStringAsFixed(2)}',
+                ),
               ],
             ),
           ],
@@ -84,20 +127,43 @@ class AnalyticsDashboardScreen extends StatelessWidget {
       ),
     );
   }
+}
 
-  Widget _buildStatItem(String label, String value) {
+class _StatItem extends StatelessWidget {
+  const _StatItem({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final typography = MacosTheme.of(context).typography;
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
         Text(
           value,
-          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          style: typography.headline.copyWith(fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 4),
         Text(
           label,
-          style: const TextStyle(fontSize: 12, color: Colors.grey),
+          style: typography.caption1,
         ),
       ],
     );
+  }
+}
+
+Color _parseHexColor(String? hex, Color fallback) {
+  if (hex == null || hex.isEmpty) {
+    return fallback;
+  }
+  final normalized =
+      hex.startsWith('#') ? hex.replaceFirst('#', '0xFF') : '0xFF$hex';
+  try {
+    return Color(int.parse(normalized));
+  } catch (_) {
+    return fallback;
   }
 }

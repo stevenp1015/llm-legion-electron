@@ -4,10 +4,47 @@ const { spawn } = require('child_process');
 const fs = require('fs').promises;
 const { EventEmitter } = require('events');
 const contextMenu = require('electron-context-menu');
-const { default: installExtension, REACT_DEVELOPER_TOOLS } = require('electron-devtools-installer');
 
-// Alternative manual installation function
+// Fix PATH for spawned processes on macOS/Linux
+// This ensures executables like npx, uvx are found when app is launched from Finder
+const fixPath = require('fix-path').default;
+fixPath();
+
+// Lazy-load devtools installer only in development (it's a devDependency)
+let installExtension, REACT_DEVELOPER_TOOLS;
+if (process.env.NODE_ENV === 'development') {
+  try {
+    const devtools = require('electron-devtools-installer');
+    installExtension = devtools.default;
+    REACT_DEVELOPER_TOOLS = devtools.REACT_DEVELOPER_TOOLS;
+  } catch (error) {
+    console.log('⚠️ Could not load electron-devtools-installer:', error.message);
+  }
+}
+
+// Fix for macOS secure coding crash on older versions (macOS 12.5 specifically)
+// This must be called BEFORE app.whenReady()
+if (process.platform === 'darwin') {
+  // Disable persistent state restoration to prevent NSPersistentUIRequiresSecureCoding crash
+  app.commandLine.appendSwitch('disable-features', 'ElectronSerialChooser');
+  app.commandLine.appendSwitch('disable-features', 'ElectronPersistentWindowState');
+
+  // Completely disable automatic state restoration on macOS
+  try {
+    app.setLoginItemSettings({
+      openAtLogin: false,
+      openAsHidden: false,
+      restoreState: false
+    });
+  } catch (e) {
+    // Ignore if setLoginItemSettings fails
+  }
+}
+
+// Alternative manual installation function (dev only)
 const installReactDevToolsManual = async () => {
+  if (process.env.NODE_ENV !== 'development' || !installExtension) return;
+
   try {
     // Try the extension ID directly
     const REACT_DEVTOOLS_EXTENSION_ID = 'fmkadmapgofadopljbjfkapdkoienihi';
@@ -61,96 +98,97 @@ class McpProcessManager extends EventEmitter {
       if (!server.command || (Array.isArray(server.command) && server.command.length === 0)) {
         throw new Error('No command specified for MCP server');
       }
-      
+
       const command = Array.isArray(server.command) ? server.command[0] : server.command;
       const commandArgs = Array.isArray(server.command) ? server.command.slice(1) : [];
       const allArgs = [...commandArgs, ...(server.args || [])];
-      
+
       if (!command || command.trim() === '') {
         throw new Error('Empty command specified for MCP server');
       }
-      
+
       console.log(`Starting MCP server "${server.name}": ${command} ${allArgs.join(' ')}`);
-      
-      const childProcess = spawn(command.trim(), allArgs, {
-        stdio: ['pipe', 'pipe', 'pipe'],
-        env: { ...process.env, ...server.env },
-        detached: false,
-        cwd: process.cwd() // Use the app's working directory
+
+      // Import MCP SDK dynamically since this is CommonJS
+      const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
+      const { StdioClientTransport } = await import('@modelcontextprotocol/sdk/client/stdio.js');
+
+      // Create MCP client
+      const client = new Client({
+        name: "Legion C&C Client",
+        version: "1.0.0"
+      }, {
+        capabilities: {
+          tools: {},
+          prompts: {},
+          resources: {}
+        }
       });
 
-      server.process = childProcess;
-      server.pid = childProcess.pid;
+      // Create stdio transport - this spawns and manages the process
+      const transport = new StdioClientTransport({
+        command: command.trim(),
+        args: allArgs,
+        env: { ...process.env, ...server.env }
+      });
 
-      // Set up process cleanup
+      // Set up cleanup handler
       const cleanup = () => {
-        server.process = undefined;
-        server.pid = undefined;
-        server.status = 'stopped';
-        this.emit('server-status-changed', serverId, 'stopped');
+        if (server.client) {
+          server.client.close().catch(err => console.error(`Error closing client ${server.name}:`, err));
+        }
+        if (server.transport) {
+          server.transport.close().catch(err => console.error(`Error closing transport ${server.name}:`, err));
+        }
+        server.client = undefined;
+        server.transport = undefined;
+        server.tools = [];
+        if (server.status !== 'stopping') {
+          server.status = 'stopped';
+          this.emit('server-status-changed', serverId, 'stopped');
+        }
       };
 
       this.processCleanupHandlers.set(serverId, cleanup);
 
-      childProcess.on('error', (error) => {
+      // Listen for transport errors and closure
+      transport.onerror = (error) => {
+        console.error(`Transport error for ${server.name}:`, error);
         server.lastError = error.message;
         server.status = 'error';
         this.emit('server-status-changed', serverId, 'error', error.message);
         cleanup();
-      });
+      };
 
-      childProcess.on('exit', (code, signal) => {
+      transport.onclose = () => {
         if (server.status !== 'stopping') {
-          server.lastError = `Process exited with code ${code}, signal ${signal}`;
+          console.log(`Transport closed unexpectedly for ${server.name}`);
+          server.lastError = 'Connection closed unexpectedly';
           server.status = 'error';
-          this.emit('server-status-changed', serverId, 'error', server.lastError);
+          this.emit('server-status-changed', serverId, 'error', 'Connection closed unexpectedly');
         }
         cleanup();
-      });
+      };
 
-      // Try to connect via MCP SDK to discover actual tools
-      setTimeout(async () => {
-        try {
-          // Import MCP SDK dynamically since this is CommonJS
-          const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
-          const { StdioClientTransport } = await import('@modelcontextprotocol/sdk/client/stdio.js');
-          
-          // Create MCP client
-          const client = new Client({
-            name: "Legion C&C Client",
-            version: "1.0.0"
-          });
-          
-          // Create stdio transport with command and args instead of process
-          const transport = new StdioClientTransport({
-            command: command.trim(),
-            args: allArgs
-          });
-          
-          // Connect to the MCP server  
-          await client.connect(transport);
-          
-          // Discover tools
-          const toolsResult = await client.listTools();
-          server.tools = toolsResult.tools || [];
-          server.client = client;
-          server.transport = transport;
-          
-          server.status = 'running';
-          this.emit('server-status-changed', serverId, 'running');
-          this.emit('server-tools-updated', serverId, server.tools);
-          
-        } catch (error) {
-          console.error(`Failed to connect to MCP server ${server.name}:`, error);
-          // Fallback - assume it's running but no tools discovered
-          server.tools = [];
-          server.status = 'running';
-          server.lastError = `Failed to discover tools: ${error.message}`;
-          this.emit('server-status-changed', serverId, 'running');
-        }
-      }, 2000);
+      // Connect to the MCP server
+      await client.connect(transport);
+
+      // Store client and transport
+      server.client = client;
+      server.transport = transport;
+
+      // Discover tools
+      const toolsResult = await client.listTools();
+      server.tools = toolsResult.tools || [];
+
+      server.status = 'running';
+      this.emit('server-status-changed', serverId, 'running');
+      this.emit('server-tools-updated', serverId, server.tools);
+
+      console.log(`MCP server "${server.name}" started with ${server.tools.length} tools`);
 
     } catch (error) {
+      console.error(`Failed to start MCP server ${server.name}:`, error);
       server.lastError = error.message;
       server.status = 'error';
       this.emit('server-status-changed', serverId, 'error', server.lastError);
@@ -164,20 +202,34 @@ class McpProcessManager extends EventEmitter {
     server.status = 'stopping';
     this.emit('server-status-changed', serverId, 'stopping');
 
-    const cleanup = this.processCleanupHandlers.get(serverId);
-    if (server.process && !server.process.killed) {
-      server.process.kill('SIGTERM');
-      
-      // Force kill after 5 seconds if it doesn't exit gracefully
-      setTimeout(() => {
-        if (server.process && !server.process.killed) {
-          server.process.kill('SIGKILL');
-        }
-      }, 5000);
-    }
+    try {
+      // Close client first (sends proper disconnect messages)
+      if (server.client) {
+        await server.client.close();
+        server.client = undefined;
+      }
 
-    if (cleanup) {
-      cleanup();
+      // Then close transport (kills the process gracefully)
+      if (server.transport) {
+        await server.transport.close();
+        server.transport = undefined;
+      }
+
+      server.tools = [];
+      server.status = 'stopped';
+      this.emit('server-status-changed', serverId, 'stopped');
+
+      console.log(`MCP server "${server.name}" stopped`);
+    } catch (error) {
+      console.error(`Error stopping server ${server.name}:`, error);
+      // Force cleanup even if close fails
+      server.client = undefined;
+      server.transport = undefined;
+      server.tools = [];
+      server.status = 'stopped';
+      this.emit('server-status-changed', serverId, 'stopped');
+    } finally {
+      // Remove cleanup handler
       this.processCleanupHandlers.delete(serverId);
     }
   }
@@ -295,6 +347,8 @@ function createWindow() {
     minWidth: 800,
     minHeight: 600,
     titleBarStyle: 'hiddenInset',
+    // Explicitly disable state restoration to prevent macOS 12.5 crash
+    ...(process.platform === 'darwin' ? { restorable: false } : {}),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -311,32 +365,54 @@ function createWindow() {
     // Try different dev server ports
     const ports = [5173, 5174, 5175, 3000];
     let currentPortIndex = 0;
-    
+    let hasLoaded = false;
+
     const tryLoadDevServer = () => {
       if (currentPortIndex >= ports.length) {
         console.error('Could not connect to dev server on any port');
         return;
       }
-      
+
       const port = ports[currentPortIndex];
+      console.log(`Attempting to load dev server on port ${port}...`);
       mainWindow.loadURL(`http://localhost:${port}`);
-      
-      mainWindow.webContents.once('did-fail-load', () => {
+
+      mainWindow.webContents.once('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+        console.log(`Failed to load ${validatedURL}: ${errorDescription} (code: ${errorCode})`);
         currentPortIndex++;
-        setTimeout(tryLoadDevServer, 1000);
+        setTimeout(tryLoadDevServer, 500);
+      });
+
+      mainWindow.webContents.once('did-finish-load', () => {
+        if (!hasLoaded) {
+          hasLoaded = true;
+          console.log(`Successfully loaded dev server on port ${port}`);
+        }
       });
     };
-    
+
     tryLoadDevServer();
+
+    // Failsafe: Show window after 3 seconds in dev mode even if ready-to-show doesn't fire
+    setTimeout(() => {
+      if (!mainWindow.isVisible()) {
+        console.log('Failsafe: Showing window after timeout');
+        mainWindow.show();
+        if (mainWindow.webContents.isLoading()) {
+          mainWindow.webContents.openDevTools();
+        }
+      }
+    }, 3000);
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   }
 
   mainWindow.once('ready-to-show', () => {
+    console.log('Window ready-to-show event fired');
     mainWindow.show();
     
     // Try installing React DevTools again after window is ready (fallback)
-    if (process.env.NODE_ENV === 'development') {
+    if (process.env.NODE_ENV === 'development' && installExtension) {
       setTimeout(async () => {
         try {
           await installExtension(REACT_DEVELOPER_TOOLS);
@@ -361,9 +437,9 @@ function createWindow() {
 
   // Install React DevTools when DOM is ready
   mainWindow.webContents.once('dom-ready', () => {
-    if (process.env.NODE_ENV === 'development') {
+    if (process.env.NODE_ENV === 'development' && installExtension) {
       console.log('🌐 DOM ready - attempting React DevTools installation...');
-      
+
       setTimeout(async () => {
         try {
           const name = await installExtension(REACT_DEVELOPER_TOOLS);
@@ -373,7 +449,7 @@ function createWindow() {
           // Try manual installation as fallback
           await installReactDevToolsManual();
         }
-        
+
         // Don't auto-refresh DevTools - let user do it manually to avoid blank page issues
       }, 500);
     }
@@ -640,11 +716,11 @@ app.whenReady().then(async () => {
   setupEventForwarding();
 
   // Install React DevTools in development
-  if (process.env.NODE_ENV === 'development') {
+  if (process.env.NODE_ENV === 'development' && installExtension) {
     try {
       const name = await installExtension(REACT_DEVELOPER_TOOLS);
       console.log('✅ React DevTools installed successfully:', name);
-      
+
       // Also log available extensions for debugging
       const extensions = BrowserWindow.getAllWindows()[0]?.webContents.session.getAllExtensions();
       console.log('📦 All installed extensions:', extensions);

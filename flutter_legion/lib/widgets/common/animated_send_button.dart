@@ -2,6 +2,7 @@
 /// Features multiple states, icon transitions, and haptic feedback
 /// 
 /// Replicates the React ChatInput send button with Flutter animations
+library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -53,7 +54,7 @@ class _AnimatedSendButtonState extends State<AnimatedSendButton>
   Color _getBackgroundColor(BuildContext context) {
     final theme = Theme.of(context);
     final primaryColor = widget.color ?? const Color(0xFFF59E0B); // Amber-500
-    final disabledColor = widget.disabledColor ?? primaryColor.withOpacity(0.3);
+    final disabledColor = widget.disabledColor ?? primaryColor.withValues(alpha: 0.3);
 
     switch (_currentState) {
       case SendButtonState.disabled:
@@ -76,12 +77,12 @@ class _AnimatedSendButtonState extends State<AnimatedSendButton>
       case SendButtonState.sending:
         return [
           BoxShadow(
-            color: primaryColor.withOpacity(0.3),
+            color: primaryColor.withValues(alpha: 0.3),
             blurRadius: 8,
             spreadRadius: 2,
           ),
           BoxShadow(
-            color: primaryColor.withOpacity(0.2),
+            color: primaryColor.withValues(alpha: 0.2),
             blurRadius: 20,
             spreadRadius: 4,
           ),
@@ -89,7 +90,7 @@ class _AnimatedSendButtonState extends State<AnimatedSendButton>
       case SendButtonState.hover:
         return [
           BoxShadow(
-            color: primaryColor.withOpacity(0.3),
+            color: primaryColor.withValues(alpha: 0.3),
             blurRadius: 12,
             spreadRadius: 2,
           ),
@@ -97,7 +98,7 @@ class _AnimatedSendButtonState extends State<AnimatedSendButton>
       case SendButtonState.idle:
         return [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: Colors.black.withValues(alpha: 0.1),
             blurRadius: 4,
             offset: const Offset(0, 2),
           ),

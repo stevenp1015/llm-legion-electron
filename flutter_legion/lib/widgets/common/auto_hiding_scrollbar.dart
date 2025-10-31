@@ -2,6 +2,7 @@
 /// Provides Vista-style scrollbars that appear during scrolling and fade away
 /// 
 /// Creates that delicious UX where scrollbars don't clutter the interface
+library;
 
 import 'dart:async';
 import 'package:flutter/material.dart';

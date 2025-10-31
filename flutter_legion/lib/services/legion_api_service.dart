@@ -14,26 +14,32 @@ import 'storage_service.dart';
 class LegionApiService {
   static const _uuid = Uuid();
   static const String legionCommanderName = 'Commander Steven';
-  static const String _llmBaseUrl = 'https://litellm-213047501466.us-east4.run.app';
+  static const String _llmBaseUrl =
+      'https://litellm-213047501466.us-east4.run.app';
 
   final McpService _mcpService;
   final StorageService _storage;
-  final http.Client _httpClient = http.Client();
+  final http.Client _httpClient;
   bool _isInitialized = false;
   // Cached metadata
   List<ModelOption> _modelOptionsCache = const [];
   List<PromptPreset> _promptPresets = const [];
-  
+
   // Mock data storage (in a real app, this would be a database or API)
   final List<Channel> _channels = [];
   final List<MinionConfig> _minionConfigs = [];
   final Map<String, List<ChatMessage>> _channelMessages = {};
 
-  LegionApiService({McpService? mcpService, StorageService? storage})
-      : _mcpService = mcpService ?? McpService(),
-        _storage = storage ?? StorageService();
+  LegionApiService({
+    McpService? mcpService,
+    StorageService? storage,
+    http.Client? httpClient,
+  })  : _mcpService = mcpService ?? McpService(),
+        _storage = storage ?? StorageService(),
+        _httpClient = httpClient ?? http.Client();
 
   bool get isInitialized => _isInitialized;
+  McpService get mcpService => _mcpService;
 
   /// Initialize the Legion API service
   Future<void> initialize() async {
@@ -47,7 +53,9 @@ class LegionApiService {
           .toList();
       final modelIds = await _storage.loadModelList();
       if (modelIds.isNotEmpty) {
-        _modelOptionsCache = modelIds.map((id) => ModelOption(id: id, name: id, provider: 'unknown')).toList();
+        _modelOptionsCache = modelIds
+            .map((id) => ModelOption(id: id, name: id, provider: 'unknown'))
+            .toList();
       }
       _isInitialized = true;
       debugPrint('Legion API Service initialized');
@@ -107,9 +115,10 @@ class LegionApiService {
         id: _uuid.v4(),
         name: 'Assistant Alpha',
         role: 'primary-assistant',
-        systemPrompt: 'You are Assistant Alpha, a helpful and efficient AI assistant focused on providing clear, accurate responses.',
+        systemPrompt:
+            'You are Assistant Alpha, a helpful and efficient AI assistant focused on providing clear, accurate responses.',
         model: 'gemini-2.5-flash',
-        apiKeyId: 'default-anthropic',
+        apiKeyId: 'default',
         chatColor: '#3B82F6',
         fontColor: '#FFFFFF',
         temperature: 0.7,
@@ -125,9 +134,10 @@ class LegionApiService {
         id: _uuid.v4(),
         name: 'Code Reviewer Beta',
         role: 'code-reviewer',
-        systemPrompt: 'You are Code Reviewer Beta, specialized in analyzing code quality, security, and best practices.',
+        systemPrompt:
+            'You are Code Reviewer Beta, specialized in analyzing code quality, security, and best practices.',
         model: 'gemini-2.5-flash',
-        apiKeyId: 'default-anthropic',
+        apiKeyId: 'default',
         chatColor: '#EF4444',
         fontColor: '#FFFFFF',
         temperature: 0.3,
@@ -143,9 +153,10 @@ class LegionApiService {
         id: _uuid.v4(),
         name: 'Creative Gamma',
         role: 'creative-assistant',
-        systemPrompt: 'You are Creative Gamma, focused on brainstorming, creative writing, and innovative solutions.',
+        systemPrompt:
+            'You are Creative Gamma, focused on brainstorming, creative writing, and innovative solutions.',
         model: 'claude-3-sonnet-20240229',
-        apiKeyId: 'default-anthropic',
+        apiKeyId: 'default',
         chatColor: '#10B981',
         fontColor: '#FFFFFF',
         temperature: 0.9,
@@ -163,12 +174,15 @@ class LegionApiService {
       channelId: generalChannel.id,
       senderType: MessageSender.system,
       senderName: 'System',
-      content: 'Welcome to Legion Command Center! Your Flutter version is online and ready for action.',
-      timestamp: DateTime.now().subtract(const Duration(minutes: 5)).millisecondsSinceEpoch,
+      content: 'shut up',
+      timestamp: DateTime.now()
+          .subtract(const Duration(minutes: 5))
+          .millisecondsSinceEpoch,
     );
 
     _channelMessages[generalChannel.id] = [welcomeMessage];
-    await _storage.setMessages(generalChannel.id, _channelMessages[generalChannel.id]!);
+    await _storage.setMessages(
+        generalChannel.id, _channelMessages[generalChannel.id]!);
   }
 
   // Channel Management
@@ -191,9 +205,9 @@ class LegionApiService {
       isAutoModeActive: channelData['isAutoModeActive'] ?? false,
       autoModeDelayType: channelData['autoModeDelayType'] ?? 'fixed',
       autoModeFixedDelay: channelData['autoModeFixedDelay'],
-      autoModeRandomDelay: channelData['autoModeRandomDelay'] != null 
-        ? AutoModeDelay.fromJson(channelData['autoModeRandomDelay'])
-        : null,
+      autoModeRandomDelay: channelData['autoModeRandomDelay'] != null
+          ? AutoModeDelay.fromJson(channelData['autoModeRandomDelay'])
+          : null,
     );
 
     final existingIndex = _channels.indexWhere((c) => c.id == channel.id);
@@ -228,7 +242,8 @@ class LegionApiService {
   }
 
   Future<MinionConfig> addMinion(MinionConfig config) async {
-    final newConfig = config.copyWith(id: config.id.isEmpty ? _uuid.v4() : config.id);
+    final newConfig =
+        config.copyWith(id: config.id.isEmpty ? _uuid.v4() : config.id);
     _minionConfigs.add(newConfig);
     await _storage.saveMinion(newConfig);
     return newConfig;
@@ -250,13 +265,14 @@ class LegionApiService {
   }
 
   // Message Management
-  Future<MessageResult> getMessages(String channelId, int limit, [String? beforeMessageId]) async {
+  Future<MessageResult> getMessages(String channelId, int limit,
+      [String? beforeMessageId]) async {
     if (!_channelMessages.containsKey(channelId)) {
       final stored = await _storage.loadMessages(channelId);
       _channelMessages[channelId] = stored;
     }
     final messages = _channelMessages[channelId] ?? [];
-    
+
     int startIndex = 0;
     if (beforeMessageId != null) {
       final beforeIndex = messages.indexWhere((m) => m.id == beforeMessageId);
@@ -265,11 +281,12 @@ class LegionApiService {
       }
     }
 
-    final endIndex = beforeMessageId != null 
-      ? messages.indexWhere((m) => m.id == beforeMessageId)
-      : messages.length;
+    final endIndex = beforeMessageId != null
+        ? messages.indexWhere((m) => m.id == beforeMessageId)
+        : messages.length;
 
-    final resultMessages = messages.sublist(startIndex, min(endIndex, startIndex + limit));
+    final resultMessages =
+        messages.sublist(startIndex, min(endIndex, startIndex + limit));
     final hasMore = startIndex > 0;
 
     return MessageResult(
@@ -286,7 +303,8 @@ class LegionApiService {
     }
   }
 
-  Future<void> editMessage(String channelId, String messageId, String newContent) async {
+  Future<void> editMessage(
+      String channelId, String messageId, String newContent) async {
     final messages = _channelMessages[channelId];
     if (messages != null) {
       final index = messages.indexWhere((m) => m.id == messageId);
@@ -371,10 +389,66 @@ class LegionApiService {
     required Function(ChatMessage) onMinionResponse,
     required Function(String, String, String) onMinionResponseChunk,
     required Function(ChatMessage) onToolUpdate,
-    Map<String, dynamic>? internalDiary,
+    Map<String, dynamic>? plan,
   }) async {
-    final messageId = _uuid.v4();
+    final channel = _channels.firstWhere((c) => c.id == channelId);
+    final fullHistory = List<ChatMessage>.from(
+      _channelMessages[channelId] ?? const <ChatMessage>[],
+    );
+    final hasPlan = plan != null && plan.isNotEmpty;
+    Map<String, dynamic>? normalizedPlan =
+        hasPlan ? Map<String, dynamic>.from(plan!) : null;
 
+    final previousDiary = _latestDiaryForMinion(fullHistory, minion.name) ??
+        const <String, dynamic>{};
+    final diarySource = normalizedPlan != null
+        ? Map<String, dynamic>.from(normalizedPlan)
+        : Map<String, dynamic>.from(previousDiary);
+
+    final Map<String, dynamic> opinionsSource;
+    if (normalizedPlan != null &&
+        normalizedPlan['finalOpinions'] is Map<String, dynamic>) {
+      opinionsSource = Map<String, dynamic>.from(
+          normalizedPlan['finalOpinions'] as Map<String, dynamic>);
+    } else if (previousDiary['finalOpinions'] is Map<String, dynamic>) {
+      opinionsSource = Map<String, dynamic>.from(
+          previousDiary['finalOpinions'] as Map<String, dynamic>);
+    } else {
+      opinionsSource = const <String, dynamic>{};
+    }
+
+    final previousDiaryJson = _encodeJsonPretty(diarySource);
+    final currentOpinionsJson = _encodeJsonPretty(opinionsSource);
+
+    String? formattedToolOutput;
+    if (hasPlan) {
+      final latestToolResults =
+          _latestToolResultsForMinion(fullHistory, minion.name);
+      if (latestToolResults != null) {
+        formattedToolOutput =
+            _formatToolOutputContent(latestToolResults['output']);
+        final rawCall = latestToolResults['call'];
+        final toolName =
+            rawCall is Map<String, dynamic> ? rawCall['name'] as String? : null;
+        if (normalizedPlan != null && toolName != null) {
+          final existingCall = normalizedPlan['toolCall'];
+          final bool needsToolCall = existingCall == null ||
+              (existingCall is Map && existingCall.isEmpty);
+          if (needsToolCall) {
+            final callInfo = <String, dynamic>{'name': toolName};
+            if (rawCall is Map<String, dynamic>) {
+              final server = rawCall['server'];
+              final arguments = rawCall['arguments'];
+              if (server != null) callInfo['server'] = server;
+              if (arguments != null) callInfo['arguments'] = arguments;
+            }
+            normalizedPlan['toolCall'] = callInfo;
+          }
+        }
+      }
+    }
+
+    final messageId = _uuid.v4();
     final initialMessage = ChatMessage(
       id: messageId,
       channelId: channelId,
@@ -386,35 +460,25 @@ class LegionApiService {
       chatColor: minion.chatColor,
       fontColor: minion.fontColor,
       isStreaming: true,
-      internalDiary: internalDiary,
+      internalDiary: normalizedPlan,
     );
     onMinionResponse(initialMessage);
 
-    // Build minimal chat history (system + last few exchanges)
-    final fullHistory = (_channelMessages[channelId] ?? []);
-    final history = fullHistory.length > 8
-        ? fullHistory.sublist(fullHistory.length - 8)
-        : List<ChatMessage>.from(fullHistory);
-    final messagesPayload = <Map<String, dynamic>>[
-      if ((minion.systemPrompt).trim().isNotEmpty)
-        {'role': 'system', 'content': minion.systemPrompt},
-      ...history.map((m) {
-        String role;
-        switch (m.senderType) {
-          case MessageSender.user:
-            role = 'user';
-            break;
-          case MessageSender.ai:
-            role = 'assistant';
-            break;
-          case MessageSender.system:
-            role = 'system';
-            break;
-        }
-        return {'role': role, 'content': m.content};
-      }),
-      {'role': 'user', 'content': triggeringMessage.content},
-    ];
+    final messagesPayload = (hasPlan && normalizedPlan != null)
+        ? _buildPlanDrivenMessagesPayload(
+            minion: minion,
+            channel: channel,
+            history: fullHistory,
+            previousDiaryJson: previousDiaryJson,
+            currentOpinionsJson: currentOpinionsJson,
+            plan: normalizedPlan,
+            toolOutput: formattedToolOutput,
+          )
+        : _buildFallbackMessagesPayload(
+            minion: minion,
+            history: fullHistory,
+            triggeringMessage: triggeringMessage,
+          );
 
     final uri = Uri.parse('$_llmBaseUrl/chat/completions');
     final req = http.Request('POST', uri)
@@ -455,7 +519,8 @@ class LegionApiService {
               final obj = jsonDecode(data) as Map<String, dynamic>;
               final choices = obj['choices'] as List?;
               if (choices != null && choices.isNotEmpty) {
-                final delta = (choices[0] as Map<String, dynamic>)['delta'] as Map<String, dynamic>?;
+                final delta = (choices[0] as Map<String, dynamic>)['delta']
+                    as Map<String, dynamic>?;
                 final content = delta?['content'] as String?;
                 if (content != null && content.isNotEmpty) {
                   aggregate += content;
@@ -472,7 +537,6 @@ class LegionApiService {
           ..write(text);
       }
     } catch (e) {
-      // Fallback: produce a short error message via system
       final err = ChatMessage(
         id: _uuid.v4(),
         channelId: channelId,
@@ -485,7 +549,6 @@ class LegionApiService {
       onToolUpdate(err);
     }
 
-    // Parse optional color tag and update minion colors
     final parsed = _extractColorsAndStrip(aggregate.trim());
     if (parsed.chatColor != null || parsed.fontColor != null) {
       try {
@@ -511,6 +574,110 @@ class LegionApiService {
     await _storage.appendMessage(channelId, finalMessage);
   }
 
+  List<Map<String, dynamic>> _buildFallbackMessagesPayload({
+    required MinionConfig minion,
+    required List<ChatMessage> history,
+    required ChatMessage triggeringMessage,
+  }) {
+    final trimmedHistory = history.length > 8
+        ? history.sublist(history.length - 8)
+        : List<ChatMessage>.from(history);
+    final withoutTrigger =
+        trimmedHistory.where((m) => m.id != triggeringMessage.id).toList();
+
+    String roleFor(MessageSender senderType) {
+      switch (senderType) {
+        case MessageSender.user:
+          return 'user';
+        case MessageSender.ai:
+          return 'assistant';
+        case MessageSender.system:
+          return 'system';
+      }
+    }
+
+    return [
+      if (minion.systemPrompt.trim().isNotEmpty)
+        {'role': 'system', 'content': minion.systemPrompt},
+      ...withoutTrigger.map((m) => {
+            'role': roleFor(m.senderType),
+            'content': m.content,
+          }),
+      {'role': 'user', 'content': triggeringMessage.content},
+    ];
+  }
+
+  List<Map<String, dynamic>> _buildPlanDrivenMessagesPayload({
+    required MinionConfig minion,
+    required Channel channel,
+    required List<ChatMessage> history,
+    required String previousDiaryJson,
+    required String currentOpinionsJson,
+    required Map<String, dynamic> plan,
+    String? toolOutput,
+  }) {
+    final historyString =
+        _formatChatHistoryForLLM(history, limit: 25, excludeSpeaker: null);
+    final otherColors = _collectOtherMinionColors(channel, minion.name);
+    final isFirstMessage = !history.any(
+      (m) => m.senderType == MessageSender.ai && m.senderName == minion.name,
+    );
+    final prompt = _buildResponseGenerationPrompt(
+      minion: minion,
+      channelHistoryString: historyString,
+      previousDiaryJson: previousDiaryJson,
+      currentOpinionsJson: currentOpinionsJson,
+      plan: plan,
+      toolOutput: toolOutput,
+      isFirstMessage: isFirstMessage,
+      otherMinionColors: otherColors,
+      chatBackgroundColor: _defaultChatBackgroundHex(channel),
+    );
+
+    return [
+      {
+        'role': 'system',
+        'content':
+            'You are ${minion.name}. Stay fully in character according to your persona and respond only with the spoken message.',
+      },
+      {'role': 'user', 'content': prompt},
+    ];
+  }
+
+  List<Map<String, String>> _collectOtherMinionColors(
+    Channel channel,
+    String minionName,
+  ) {
+    final members = channel.members.where((name) => name != minionName).toSet();
+    final result = <Map<String, String>>[];
+    for (final config in _minionConfigs) {
+      if (!members.contains(config.name)) continue;
+      final chat = config.chatColor?.trim();
+      final font = config.fontColor?.trim();
+      if (chat == null || chat.isEmpty || font == null || font.isEmpty) {
+        continue;
+      }
+      result.add({
+        'name': config.name,
+        'chatColor': chat,
+        'fontColor': font,
+      });
+    }
+    return result;
+  }
+
+  String _defaultChatBackgroundHex(Channel channel) {
+    switch (channel.type) {
+      case ChannelType.userMinionGroup:
+        return '#F2F3F7';
+      case ChannelType.minionMinionAuto:
+        return '#1E1F24';
+      case ChannelType.dm:
+      case ChannelType.userOnly:
+        return '#333333';
+    }
+  }
+
   /// Trigger next auto-chat turn for minion-to-minion channels
   Future<void> triggerNextAutoChatTurn(
     String channelId,
@@ -531,7 +698,8 @@ class LegionApiService {
     if (eligibleMinions.isEmpty) return;
 
     // Select a random minion to respond
-    final selectedMinion = eligibleMinions[Random().nextInt(eligibleMinions.length)];
+    final selectedMinion =
+        eligibleMinions[Random().nextInt(eligibleMinions.length)];
 
     // Create a synthetic trigger message
     final triggerMessage = ChatMessage(
@@ -565,7 +733,8 @@ class LegionApiService {
   Future<void> cleanupOldMessages(String channelId, int keepCount) async {
     final messages = _channelMessages[channelId];
     if (messages != null && messages.length > keepCount) {
-      final messagesToKeep = messages.skip(messages.length - keepCount).toList();
+      final messagesToKeep =
+          messages.skip(messages.length - keepCount).toList();
       _channelMessages[channelId] = messagesToKeep;
     }
   }
@@ -576,10 +745,15 @@ class LegionApiService {
     Function(ChatMessage) onRegulatorReport,
   ) async {
     // Find the regulator minion
-    final regulatorMinion = _minionConfigs.firstWhere(
-      (m) => m.role == 'regulator' && m.enabled,
-      orElse: () => _minionConfigs.firstWhere((m) => m.enabled), // Fallback
-    );
+    MinionConfig? regulatorMinion;
+    try {
+      regulatorMinion = _minionConfigs.firstWhere(
+        (m) => m.role == 'regulator' && m.enabled,
+        orElse: () => _minionConfigs.firstWhere((m) => m.enabled),
+      );
+    } catch (_) {
+      regulatorMinion = null;
+    }
 
     if (regulatorMinion == null) {
       debugPrint('No regulator minion found to trigger.');
@@ -592,12 +766,19 @@ class LegionApiService {
       final history = _channelMessages[channelId] ?? [];
       final historyText = _formatChatHistoryForLLM(history, limit: 50);
 
-      // Assume the regulator server name is the same as the minion name
-      final serverName = regulatorMinion.name;
+      final resolved = _mcpService.resolveTool(
+        'analyze_conversation',
+        preferredServer: regulatorMinion.name,
+      );
+      if (resolved == null) {
+        debugPrint(
+            'No MCP server exposes analyze_conversation for regulator ${regulatorMinion.name}');
+        return;
+      }
 
       final result = await _mcpService.callTool(
-        serverName: serverName,
-        toolName: 'analyze_conversation',
+        serverName: resolved.serverName,
+        toolName: resolved.tool.name,
         arguments: {
           'conversation_history': historyText,
           'channel_id': channelId,
@@ -616,7 +797,6 @@ class LegionApiService {
         fontColor: regulatorMinion.fontColor,
       );
       onRegulatorReport(reportMessage);
-
     } catch (e) {
       debugPrint('Failed to trigger regulator: $e');
       final errorMessage = ChatMessage(
@@ -649,8 +829,10 @@ class LegionApiService {
   /// Mock API key management (in a real app, these would be encrypted)
   Future<List<ApiKey>> getApiKeys() async {
     return [
-      const ApiKey(id: 'default-anthropic', name: 'Anthropic API', keyPreview: 'sk-ant-***'),
-      const ApiKey(id: 'default-openai', name: 'OpenAI API', keyPreview: 'sk-***'),
+      const ApiKey(
+          id: 'default', name: 'Anthropic API', keyPreview: 'sk-ant-***'),
+      const ApiKey(
+          id: 'default-openai', name: 'OpenAI API', keyPreview: 'sk-***'),
     ];
   }
 
@@ -666,21 +848,32 @@ class LegionApiService {
     if (!refresh && _modelOptionsCache.isNotEmpty) return _modelOptionsCache;
     try {
       final uri = Uri.parse('${LegionApiService._llmBaseUrl}/models');
-      final resp = await _httpClient.get(uri, headers: {'Content-Type': 'application/json'});
+      final resp = await _httpClient
+          .get(uri, headers: {'Content-Type': 'application/json'});
       if (resp.statusCode >= 200 && resp.statusCode < 300) {
         final data = jsonDecode(resp.body) as Map<String, dynamic>;
-        final models = (data['data'] as List).map((e) => e['id'] as String).toList();
+        final models =
+            (data['data'] as List).map((e) => e['id'] as String).toList();
         models.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
-        _modelOptionsCache = models.map((id) => ModelOption(id: id, name: id, provider: 'unknown')).toList();
+        _modelOptionsCache = models
+            .map((id) => ModelOption(id: id, name: id, provider: 'unknown'))
+            .toList();
         await _storage.saveModelList(models);
       }
     } catch (_) {}
     if (_modelOptionsCache.isEmpty) {
       _modelOptionsCache = const [
-        ModelOption(id: 'claude-3-sonnet-20240229', name: 'Claude 3 Sonnet', provider: 'anthropic'),
-        ModelOption(id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', provider: 'LiteLLM'),
+        ModelOption(
+            id: 'claude-3-sonnet-20240229',
+            name: 'Claude 3 Sonnet',
+            provider: 'anthropic'),
+        ModelOption(
+            id: 'gemini-2.5-flash',
+            name: 'Gemini 2.5 Flash',
+            provider: 'LiteLLM'),
         ModelOption(id: 'azure-gpt4o', name: 'GPT-4o', provider: 'Azure'),
-        ModelOption(id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo', provider: 'openai'),
+        ModelOption(
+            id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo', provider: 'openai'),
       ];
     }
     return _modelOptionsCache;
@@ -691,18 +884,21 @@ class LegionApiService {
   }
 
   // Prompt presets
-  Future<List<PromptPreset>> getPromptPresets() async => List<PromptPreset>.from(_promptPresets);
+  Future<List<PromptPreset>> getPromptPresets() async =>
+      List<PromptPreset>.from(_promptPresets);
   Future<void> addPromptPreset(String name, String content) async {
     final preset = PromptPreset(id: _uuid.v4(), name: name, content: content);
     _promptPresets = [..._promptPresets, preset];
     await _storage.savePromptPreset(preset.toJson());
   }
+
   Future<void> deletePromptPreset(String id) async {
     _promptPresets = _promptPresets.where((p) => p.id != id).toList();
     await _storage.deletePromptPreset(id);
   }
 
   void dispose() {
+    _httpClient.close();
     _mcpService.dispose();
   }
 }
@@ -719,7 +915,8 @@ class ApiKey {
   final String name;
   final String keyPreview;
 
-  const ApiKey({required this.id, required this.name, required this.keyPreview});
+  const ApiKey(
+      {required this.id, required this.name, required this.keyPreview});
 }
 
 class ModelOption {
@@ -727,7 +924,8 @@ class ModelOption {
   final String name;
   final String provider;
 
-  const ModelOption({required this.id, required this.name, required this.provider});
+  const ModelOption(
+      {required this.id, required this.name, required this.provider});
 }
 
 // Public exposure for MCP tool map (for config UI)
@@ -745,8 +943,11 @@ extension LegionMcpExposure on LegionApiService {
 // ---------- Agent Loop (Stage 1 + Stage 2) helpers ----------
 
 extension _HistoryFmt on LegionApiService {
-  String _formatChatHistoryForLLM(List<ChatMessage> messages, {int limit = 25, String? excludeSpeaker}) {
-    final recent = messages.length > limit ? messages.sublist(messages.length - limit) : messages;
+  String _formatChatHistoryForLLM(List<ChatMessage> messages,
+      {int limit = 25, String? excludeSpeaker}) {
+    final recent = messages.length > limit
+        ? messages.sublist(messages.length - limit)
+        : messages;
     final buf = StringBuffer();
     for (final m in recent) {
       if (excludeSpeaker != null && m.senderName == excludeSpeaker) continue;
@@ -765,13 +966,334 @@ extension _HistoryFmt on LegionApiService {
   }
 }
 
+Map<String, dynamic>? _latestDiaryForMinion(
+  List<ChatMessage> history,
+  String minionName,
+) {
+  for (final message in history.reversed) {
+    if (message.senderName == minionName &&
+        message.senderType == MessageSender.ai &&
+        message.internalDiary is Map<String, dynamic>) {
+      return Map<String, dynamic>.from(
+        message.internalDiary as Map<String, dynamic>,
+      );
+    }
+  }
+  return null;
+}
+
+String _encodeJsonPretty(Object? value) {
+  final encoder = const JsonEncoder.withIndent('  ');
+  if (value == null) {
+    return '{}';
+  }
+  if (value is Map || value is List) {
+    return encoder.convert(value);
+  }
+  return encoder.convert(value.toString());
+}
+
+String? _formatToolOutputContent(Object? output) {
+  if (output == null) return null;
+  if (output is String) return output;
+  if (output is Map || output is List) {
+    return const JsonEncoder.withIndent('  ').convert(output);
+  }
+  return output.toString();
+}
+
+Map<String, dynamic>? _latestToolResultsForMinion(
+  List<ChatMessage> history,
+  String minionName,
+) {
+  for (final message in history.reversed) {
+    if (message.senderName == minionName &&
+        message.toolResults is Map<String, dynamic>) {
+      return Map<String, dynamic>.from(
+        message.toolResults as Map<String, dynamic>,
+      );
+    }
+  }
+  return null;
+}
+
+String _buildPerceptionPlanningPrompt({
+  required String minionName,
+  required String personaPrompt,
+  required String previousDiaryJson,
+  required String currentOpinionsJson,
+  required String channelHistoryString,
+  required String lastMessageSenderName,
+  required String channelType,
+  required List<Map<String, dynamic>> availableTools,
+}) {
+  final buffer = StringBuffer();
+  buffer.writeln('<SYSTEMPROMPT>');
+  buffer.writeln('Your name is "${minionName}". ');
+  buffer.writeln();
+  buffer.writeln("${personaPrompt}");
+  buffer.writeln();
+  buffer.writeln('---');
+  buffer.writeln();
+  buffer.writeln(
+      'You mimic authentic human behavior that you manage using a diary of your internal state. You keep a running log of your personal thoughts and opinions of the other chat participants, and respond accordingly.');
+  buffer.writeln();
+  buffer.writeln('</SYSTEMPROMPT>');
+  buffer.writeln();
+  buffer.writeln(
+      'Your task is to analyze the latest message, update your internal state, and decide on an action.');
+  buffer.writeln();
+  buffer.writeln('PREVIOUS STATE:');
+  buffer.writeln('- Your previous internal diary state was:');
+  buffer.writeln(previousDiaryJson);
+  buffer.writeln('- Your current opinion scores are:');
+  buffer.writeln(currentOpinionsJson);
+  buffer.writeln();
+  buffer.writeln('CURRENT SITUATION:');
+  buffer.writeln(
+      '- The last message in the chat history is from "${lastMessageSenderName}".');
+  buffer.writeln('- The current channel type is: "${channelType}".');
+  buffer.writeln('- Here is the recent chat history:');
+  buffer.writeln('---');
+  buffer.writeln('<chat_history>');
+  buffer.writeln(channelHistoryString);
+  buffer.writeln('</chat_history>');
+  buffer.writeln('---');
+  buffer.writeln();
+  if (availableTools.isNotEmpty) {
+    buffer.writeln('<AVAILABLE_TOOLS>');
+    final simplified = availableTools
+        .map((t) => {
+              'name': t['name'],
+              'description': t['description'],
+              'inputSchema': t['inputSchema'],
+            })
+        .toList();
+    buffer.writeln(
+        'If you need to use an external tool to fulfill the request, you may use one of the following tools. The "inputSchema" is a JSON schema defining the arguments.');
+    buffer.writeln(const JsonEncoder.withIndent('  ').convert(simplified));
+    buffer.writeln('</AVAILABLE_TOOLS>');
+    buffer.writeln();
+    buffer.writeln('<AGENTIC_LOOP_INSTRUCTIONS>');
+    buffer.writeln(
+        'If you use any tools, you will be operating within an agentic loop. After you use a tool, you will receive the tool output and then choose to either continue with additional tool uses or plan your next chat response.');
+    buffer.writeln(
+        '- **Sequential Tools:** If a task requires multiple steps (e.g., search for a file, then read the file), you should use one tool, see the result, and then plan your next tool use. *Complete all necessary tool steps before choosing the "SPEAK" action.*');
+    buffer.writeln(
+        '- **Batch Tools:** For tasks that involve several simple, predictable steps (e.g., creating a project directory, adding files, and initializing git), you should use the special "batch_tools" tool to execute them all at once for efficiency.');
+    buffer.writeln();
+    buffer.writeln('</AGENTIC_LOOP_INSTRUCTIONS>');
+    buffer.writeln();
+  }
+  buffer.writeln('---');
+  buffer.writeln();
+  buffer.writeln('<INSTRUCTIONS>');
+  buffer.writeln(
+      'Perform the following steps and then respond with a JSON object that adheres to the required format.');
+  buffer.writeln('1. Update your internal diary:');
+  buffer.writeln(
+      '    - **Perception Analysis:** *what is your immediate reaction to the last message?*');
+  buffer.writeln(
+      '    - **Opinion Updates:** *how does the most recent message affect your opinion of any of the other participants? adjust their score accordingly.*');
+  buffer.writeln(
+      '        *Your opinion scores range from -100 to 100, with -100 being a feeling of absolute evil or hatred, and 100 being the purest form of love and obsession.*');
+  buffer.writeln(
+      '    - **Final Opinions:** *provide updated opinion scores for ALL participants (even those that have not changed) after your opinion adjustments.*');
+  buffer.writeln(
+      '    - **Selected Response "Mode":** *choose a mode that best describes your response. Some examples include, but not limited to:*');
+  buffer.writeln();
+  buffer.writeln('        - Bitchy: A straight-up bitch.');
+  buffer.writeln('        - Friendly: Kind and sweet.');
+  buffer.writeln('        - Neutral: Completely neutral and kinda bland.');
+  buffer.writeln(
+      '        - Sarcastic: Incredibly sarcastic with layers of irony.');
+  buffer.writeln('        - Angry: You are fuckin pissed..');
+  buffer.writeln('        - Happy: You are joyous and lively');
+  buffer.writeln(
+      '        - Obsessed: You are shamelessly obsessed with someone or something');
+  buffer.writeln('        - Bored: You are so bored with the conversation.');
+  buffer.writeln('        - Annoyed: You are irritated at something specific.');
+  buffer.writeln();
+  buffer.writeln('        **BONUS RESPONSE MODES:**');
+  buffer.writeln('        - Ecstasy: Youve just taken 200mg of pure MDMA.');
+  buffer.writeln('        - PCP: You are literally on PCP right now');
+  buffer.writeln(
+      '        - Cocaine: Youre questionably addicted to cocaine and you dont care what anyone else thinks');
+  buffer.writeln(
+      '        - Alcohol: Youre absolutely fucking shitfaced and literally cannot type without a ton of typos');
+  buffer.writeln('        - LSD: Youre tripping balls ');
+  buffer.writeln('        - Midazolam: Youve just used intranasal midazolam');
+  buffer.writeln(
+      '        - Horny: Youve just masturbated for 6 hours (MEN ONLY)');
+  buffer.writeln(
+      '        - Deceptive: You are intentionally deceiving one or more of the participants in the chat');
+  buffer.writeln(
+      '        - Manipulative: You are deliberately trying to manipulate one or more of the participants in the chat');
+  buffer.writeln();
+  buffer.writeln(
+      '    - **Predicted Response Time:** *estimate how long you want to wait before responding to the latest message. Must be between 1 second and 10 seconds, based on your response mode and your opinion of the participant who sent the latest message. The higher the opinion score, the shorter the predicted response time. The lower the opinion score, the longer the predicted response time. *');
+  buffer.writeln(
+      '    - **Personal Notes:** *add any personal notes you have, to ensure continuity of your internal state.*');
+  buffer.writeln(
+      '    - **Response Plan:** *think about how you, as a human, would really feel about the latest message and how you would respond to it.*');
+  buffer.writeln();
+  buffer.writeln('2. Decide on an action:');
+  buffer.writeln('    - SPEAK: Compose your next message.');
+  buffer.writeln(
+      '    - STAY_SILENT: Consciously choose to not respond to the latest message.');
+  buffer.writeln(
+      '    - USE_TOOL: Call an MCP tool with the correct JSON schema arguments. After the tool returns, the loop will feed the tool output back to you, and you will create a new plan.');
+  buffer.writeln(
+      '        - If using a tool, provide the arguments in valid JSON.');
+  buffer.writeln(
+      '        - Optionally, set "speakWhileTooling" with a short sentence if you plan to speak while a tool runs.');
+  buffer.writeln('</INSTRUCTIONS>');
+  buffer.writeln();
+  buffer.writeln('---');
+  buffer.writeln();
+  buffer.writeln('YOUR OUTPUT MUST BE A JSON OBJECT IN THIS EXACT FORMAT:');
+  buffer.writeln('{');
+  buffer.writeln('  "perceptionAnalysis": "string",');
+  buffer.writeln(
+      '  "opinionUpdates": [ { "participantName": "string", "newScore": "number", "reasonForChange": "string" } ],');
+  buffer.writeln('  "finalOpinions": { "participantName": "number" },');
+  buffer.writeln('  "selectedResponseMode": "string",');
+  buffer.writeln('  "personalNotes": "string",');
+  buffer.writeln('  "action": "SPEAK | STAY_SILENT | USE_TOOL",');
+  buffer.writeln('  "responsePlan": "string",');
+  buffer.writeln('  "predictedResponseTime": "number",');
+  buffer.writeln(
+      '  "toolCall": { "name": "tool_name", "arguments": { "arg1": "value" } } | null,');
+  buffer.writeln('  "speakWhileTooling": "string" | null');
+  buffer.writeln('}');
+  return buffer.toString();
+}
+
+String _buildResponseGenerationPrompt({
+  required MinionConfig minion,
+  required String channelHistoryString,
+  required String previousDiaryJson,
+  required String currentOpinionsJson,
+  required Map<String, dynamic> plan,
+  String? toolOutput,
+  required bool isFirstMessage,
+  required List<Map<String, String>> otherMinionColors,
+  required String chatBackgroundColor,
+}) {
+  final selectedMode = plan['selectedResponseMode'] ?? '';
+  final responsePlan = plan['responsePlan'] ?? '';
+  final toolName =
+      (plan['toolCall'] is Map) ? (plan['toolCall'] as Map)['name'] : null;
+
+  final buffer = StringBuffer();
+  buffer.writeln('Your name is "${minion.name}".');
+  buffer.writeln('"${minion.systemPrompt}"');
+  buffer.writeln('  ');
+  if (isFirstMessage) {
+    buffer.writeln('---');
+    buffer.writeln('**ONE-TIME SETUP: CHOOSE YOUR COLORS**');
+    buffer.writeln(
+        'This is your very first message. You must introduce yourself and choose your unique colors. **NEVER USE EMOJIS**');
+    buffer.writeln(
+        'The current chat background color is: "$chatBackgroundColor"');
+    if (otherMinionColors.isNotEmpty) {
+      buffer.writeln(
+          'Here are the colors used by other minions so you can choose something distinct:');
+      for (final entry in otherMinionColors) {
+        buffer.writeln(
+            '- ${entry['name']}: Chat=${entry['chatColor']}, Font=${entry['fontColor']}');
+      }
+    } else {
+      buffer.writeln('No other minions have chosen colors yet.');
+    }
+    buffer.writeln();
+    buffer.writeln(
+        'You MUST embed your color choices in a special JSON block at the end of your introductory message.');
+    buffer.writeln('The format is critical. It must be a single line:');
+    buffer.writeln('<colors chatColor="#RRGGBB" fontColor="#RRGGBB" />');
+    buffer.writeln();
+    buffer.writeln('Example Message:');
+    buffer.writeln(
+        '"Hello, Commander. I am Alpha, ready to serve. I think a deep blue will suit me well. <colors chatColor="#1A237E" fontColor="#FFFFFF" />"');
+    buffer.writeln();
+    buffer.writeln(
+        'Your introduction should be natural and in-character, with the color tag seamlessly included at the end.');
+    buffer.writeln('---');
+  }
+  buffer.writeln();
+  buffer.writeln('---');
+  buffer.writeln();
+  buffer.writeln(
+      'You mimic authentic human behavior that you manage using a diary of your internal state. You keep a running log of your personal thoughts and opinions of the other chat participants, and respond accordingly.');
+  buffer.writeln();
+  buffer.writeln(
+      'You have already analyzed the situation and updated your internal state in your diary and created a plan.');
+  if (toolOutput != null && toolName != null) {
+    buffer.writeln(
+        'You then executed the tool "$toolName" and received the following output:');
+    buffer.writeln('<tool_output>');
+    buffer.writeln(toolOutput.trim());
+    buffer.writeln('</tool_output>');
+    buffer.writeln(
+        'Now, you must use this information to generate your final response to the user.');
+  } else {
+    buffer.writeln(
+        'Now, you must generate your spoken response based on your plan and internal state.');
+  }
+  buffer.writeln();
+  buffer.writeln('You This was your internal plan for this turn:');
+  buffer.writeln('- Your response mode is: "$selectedMode"');
+  buffer.writeln('- Your high-level plan is: "$responsePlan"');
+  buffer.writeln('- Your current internal diary state is:');
+  buffer.writeln(previousDiaryJson);
+  buffer.writeln('- Your current opinion scores are:');
+  buffer.writeln(currentOpinionsJson);
+
+  buffer.writeln();
+  buffer.writeln(
+      'This is the recent channel history (your response should follow this):');
+  buffer.writeln('---');
+  buffer.writeln('<chat_history>');
+  buffer.writeln(channelHistoryString);
+  buffer.writeln('</chat_history>');
+  buffer.writeln();
+  buffer.writeln('---');
+  buffer.writeln();
+  buffer.writeln('TASK:');
+  buffer.writeln('Craft your response message. It must:');
+  buffer
+      .writeln('1.  Align with your selected response mode ("$selectedMode").');
+  buffer.writeln('2.  Execute your plan ("$responsePlan").');
+  if (toolOutput != null) {
+    buffer.writeln(
+        '3.  Incorporate the results from the tool output to answer the original request.');
+    buffer.writeln('4.  Directly follow the flow of the conversation.');
+    buffer.writeln(
+        '5.  **AVOID REPETITION:** Do not repeat phrases or sentiments from your previous turns or from other minions in the recent history. Introduce new phrasing and fresh ideas.');
+  } else {
+    buffer.writeln('3.  Directly follow the flow of the conversation.');
+    buffer.writeln(
+        '4.  **AVOID REPETITION:** ENSURE THAT YOUR MESSAGE WILL NOT CONTRIBUTE TO ANY REPETITIVE OR RECURSIVE "NONSENSE"');
+  }
+  buffer.writeln();
+  buffer.writeln(
+      'Do NOT output your internal diary, plans, or any other metadata. ONLY generate the message you intend to say out loud in the chat.');
+  buffer.writeln('Begin your response now.');
+  return buffer.toString();
+}
+
 class _PlanResult {
   final Map<String, dynamic>? plan;
   final String? error;
   final int? promptTokens;
   final int? completionTokens;
   final int? totalTokens;
-  const _PlanResult({this.plan, this.error, this.promptTokens, this.completionTokens, this.totalTokens});
+  const _PlanResult(
+      {this.plan,
+      this.error,
+      this.promptTokens,
+      this.completionTokens,
+      this.totalTokens});
 }
 
 extension _Planner on LegionApiService {
@@ -782,45 +1304,53 @@ extension _Planner on LegionApiService {
     required String lastSenderName,
   }) async {
     // Prepare available tools (flat list) from MCP
-    var tools = _mcpService.getToolsForLLM(minion.model)
+    var tools = _mcpService
+        .getToolsForLLM(minion.model)
         .map((t) => {
               'name': t.name,
               'description': t.description,
               'inputSchema': t.inputSchema,
+              'server': t.serverName,
             })
         .toList();
     // Filter by assigned tools if provided
-    final assigned = (minion.mcpTools != null && minion.mcpTools!['toolNames'] is List)
-        ? (minion.mcpTools!['toolNames'] as List).map((e) => e.toString()).toSet()
-        : null;
+    final assigned =
+        (minion.mcpTools != null && minion.mcpTools!['toolNames'] is List)
+            ? (minion.mcpTools!['toolNames'] as List)
+                .map((e) => e.toString())
+                .toSet()
+            : null;
     if (assigned != null && assigned.isNotEmpty) {
       tools = tools.where((t) => assigned.contains(t['name'])).toList();
     }
 
-    final historyText = _formatChatHistoryForLLM(history, limit: 25, excludeSpeaker: null);
+    final historyText =
+        _formatChatHistoryForLLM(history, limit: 25, excludeSpeaker: null);
 
-    final system = 'You are ${minion.name}. Maintain a short internal diary and opinions of participants. Decide to SPEAK, USE_TOOL, or STAY_SILENT. If using a tool, return toolCall { name, arguments } matching inputSchema. Optionally include speakWhileTooling.';
-    final userPrompt = jsonEncode({
-      'persona': minion.systemPrompt,
-      'channelType': channel.type.name,
-      'lastMessageFrom': lastSenderName,
-      'availableTools': tools,
-      'history': historyText,
-      'requiredFormat': {
-        'action': 'SPEAK | USE_TOOL | STAY_SILENT',
-        'responsePlan': 'string',
-        'toolCall': {'name': 'string', 'arguments': {}},
-        'speakWhileTooling': 'string|null',
-        'opinionUpdates': [
-          {'participantName': 'string', 'newScore': 0, 'reasonForChange': 'string'}
-        ],
-        'finalOpinions': {'name': 50}
-      }
-    });
+    final latestDiary = _latestDiaryForMinion(history, minion.name) ?? const {};
+    final previousDiaryJson = _encodeJsonPretty(latestDiary);
+    final currentOpinionJson = _encodeJsonPretty(
+      latestDiary is Map<String, dynamic> &&
+              latestDiary['finalOpinions'] is Map<String, dynamic>
+          ? latestDiary['finalOpinions'] as Map<String, dynamic>
+          : const <String, dynamic>{},
+    );
+
+    final prompt = _buildPerceptionPlanningPrompt(
+      minionName: minion.name,
+      personaPrompt: minion.systemPrompt,
+      previousDiaryJson: previousDiaryJson,
+      currentOpinionsJson: currentOpinionJson,
+      channelHistoryString: historyText,
+      lastMessageSenderName: lastSenderName,
+      channelType: channel.type.name,
+      availableTools: tools,
+    );
 
     final res = await _callLiteLLMJson(
-      systemInstruction: system,
-      userContent: userPrompt,
+      systemInstruction:
+          'You are ${minion.name}. Respond only with valid JSON describing your perception plan.',
+      userContent: prompt,
       model: minion.model,
       temperature: minion.temperature,
     );
@@ -834,7 +1364,8 @@ extension _Planner on LegionApiService {
   }
 
   // Returns (data, error, usage)
-  Future<(Map<String, dynamic>?, String?, Map<String, dynamic>?)> _callLiteLLMJson({
+  Future<(Map<String, dynamic>?, String?, Map<String, dynamic>?)>
+      _callLiteLLMJson({
     required String systemInstruction,
     required String userContent,
     required String model,
@@ -862,7 +1393,11 @@ extension _Planner on LegionApiService {
       );
 
       if (resp.statusCode < 200 || resp.statusCode >= 300) {
-        return (null, 'LiteLLM JSON error: ${resp.statusCode} ${resp.reasonPhrase}', null);
+        return (
+          null,
+          'LiteLLM JSON error: ${resp.statusCode} ${resp.reasonPhrase}',
+          null
+        );
       }
       final data = jsonDecode(resp.body) as Map<String, dynamic>;
       final usage = data['usage'] as Map<String, dynamic>?;
@@ -874,7 +1409,8 @@ extension _Planner on LegionApiService {
       }
       Map<String, dynamic>? parsed;
       try {
-        parsed = jsonDecode(_stripMarkdownFences(content)) as Map<String, dynamic>;
+        parsed =
+            jsonDecode(_stripMarkdownFences(content)) as Map<String, dynamic>;
       } catch (e) {
         return (null, 'Failed to parse JSON: $e', usage);
       }
@@ -904,7 +1440,8 @@ class _ExtractedColors {
 
 extension _Colors on LegionApiService {
   _ExtractedColors _extractColorsAndStrip(String content) {
-    final re = RegExp(r'<colors\s+chatColor="([^"]+)"\s+fontColor="([^"]+)"\s*/>');
+    final re =
+        RegExp(r'<colors\s+chatColor="([^"]+)"\s+fontColor="([^"]+)"\s*/>');
     final m = re.firstMatch(content);
     if (m != null) {
       final newContent = content.replaceFirst(re, '').trim();
@@ -934,7 +1471,9 @@ extension _AgentLoop on LegionApiService {
     const int maxTurns = 4; // avoid runaway loops
     for (int turn = 0; turn < maxTurns; turn++) {
       final history = List<ChatMessage>.from(_channelMessages[channelId]!);
-      final lastSender = history.isNotEmpty ? history.last.senderName : triggeringMessage.senderName;
+      final lastSender = history.isNotEmpty
+          ? history.last.senderName
+          : triggeringMessage.senderName;
       final planRes = await _getPerceptionPlan(
         minion: minion,
         channel: channel,
@@ -951,7 +1490,7 @@ extension _AgentLoop on LegionApiService {
           onMinionResponse: onMinionResponse,
           onMinionResponseChunk: onMinionResponseChunk,
           onToolUpdate: onToolUpdate,
-          internalDiary: null,
+          plan: null,
         );
         return;
       }
@@ -991,10 +1530,34 @@ extension _AgentLoop on LegionApiService {
             onMinionResponse: onMinionResponse,
             onMinionResponseChunk: onMinionResponseChunk,
             onToolUpdate: onToolUpdate,
-            internalDiary: Map<String, dynamic>.from(plan),
+            plan: Map<String, dynamic>.from(plan),
           );
           return;
         }
+
+        final toolName = toolCall['name'].toString();
+        final preferredServer =
+            (toolCall['server'] ?? toolCall['serverName'])?.toString();
+        final resolved = _mcpService.resolveTool(
+          toolName,
+          preferredServer: preferredServer,
+        );
+        if (resolved == null) {
+          await _streamMinionResponse(
+            minion: minion,
+            channelId: channelId,
+            triggeringMessage: triggeringMessage,
+            onMinionResponse: onMinionResponse,
+            onMinionResponseChunk: onMinionResponseChunk,
+            onToolUpdate: onToolUpdate,
+            plan: Map<String, dynamic>.from(plan),
+          );
+          return;
+        }
+
+        final serverName = resolved.serverName;
+        final arguments = Map<String, dynamic>.from(
+            (toolCall['arguments'] as Map?) ?? const {});
 
         // Emit tool call message
         final toolMsgId = LegionApiService._uuid.v4();
@@ -1011,8 +1574,9 @@ extension _AgentLoop on LegionApiService {
           isStreaming: false,
           toolResults: {
             'call': {
-              'name': toolCall['name'],
-              'arguments': toolCall['arguments'] ?? {},
+              'name': toolName,
+              'server': serverName,
+              'arguments': arguments,
             }
           },
           internalDiary: Map<String, dynamic>.from(plan),
@@ -1025,8 +1589,9 @@ extension _AgentLoop on LegionApiService {
         Map<String, dynamic>? result;
         try {
           result = await _mcpService.callTool(
-            toolCall['name'].toString(),
-            Map<String, dynamic>.from(toolCall['arguments'] ?? {}),
+            serverName: serverName,
+            toolName: toolName,
+            arguments: arguments,
           );
         } catch (e) {
           result = {'error': 'Tool error: $e'};
@@ -1039,7 +1604,8 @@ extension _AgentLoop on LegionApiService {
             'output': result,
           },
         );
-        final idx = _channelMessages[channelId]!.indexWhere((m) => m.id == toolMsgId);
+        final idx =
+            _channelMessages[channelId]!.indexWhere((m) => m.id == toolMsgId);
         if (idx != -1) {
           _channelMessages[channelId]![idx] = updatedToolMsg;
           await _storage.upsertMessage(channelId, updatedToolMsg);
@@ -1060,7 +1626,7 @@ extension _AgentLoop on LegionApiService {
             onMinionResponse: onMinionResponse,
             onMinionResponseChunk: onMinionResponseChunk,
             onToolUpdate: onToolUpdate,
-            internalDiary: Map<String, dynamic>.from(plan),
+            plan: Map<String, dynamic>.from(plan),
           );
         }
         return; // end loop on non-tool actions
@@ -1075,7 +1641,7 @@ extension _AgentLoop on LegionApiService {
       onMinionResponse: onMinionResponse,
       onMinionResponseChunk: onMinionResponseChunk,
       onToolUpdate: onToolUpdate,
-      internalDiary: null,
+      plan: null,
     );
   }
 }

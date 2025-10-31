@@ -157,7 +157,7 @@ const ChannelList: React.FC<ChannelListProps> = ({
 
     return (
         <>
-            <div className="w-64 bg-zinc-100/50 border-r border-zinc-200 flex-shrink-0 flex flex-col">
+            <div className="w-64 bg-[#E7E3E7] border-r border-zinc-200 flex-shrink-0 flex flex-col">
                 <div className="p-3 border-b border-zinc-200 flex justify-between items-center electron-drag">
                     <h2 className="text-lg font-semibold text-neutral-700">Channels</h2>
                     <motion.button 
@@ -185,7 +185,7 @@ const ChannelList: React.FC<ChannelListProps> = ({
                         </motion.div>
                     </motion.button>
                 </div>
-                <div className="flex-grow p-2 overflow-y-auto scrollbar-thin scrollbar-thumb-neutral-300 scrollbar-track-transparent">
+                <div className="flex-grow p-0 overflow-y-auto scrollbar-thin scrollbar-thumb-neutral-300 scrollbar-track-transparent">
                     <MinionBuddylist
                         channels={channels}
                         minionConfigs={minionConfigs}

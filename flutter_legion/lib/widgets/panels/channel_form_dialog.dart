@@ -174,7 +174,7 @@ class _ChannelFormDialogState extends State<ChannelFormDialog> {
                               final others = _members
                                   .where((n) => n != LegionApiService.legionCommanderName)
                                   .toList();
-                              if (others.length >= 1) {
+                              if (others.isNotEmpty) {
                                 // Replace the existing minion with the new one
                                 _members
                                   ..removeWhere((n) => n != LegionApiService.legionCommanderName)

@@ -2,8 +2,11 @@
 /// Implements avatar clicking, horizontal slides, diary panels, and tool bubbles
 /// 
 /// This is the Flutter masterpiece equivalent of React ChatMessage.tsx
+library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../models/chat_message.dart';
 import '../../models/minion_config.dart';
@@ -20,9 +23,13 @@ class EnhancedChatMessage extends StatefulWidget {
   final bool isSelected;
   final bool isBulkDiaryVisible;
   final VoidCallback? onEnterSelectionMode;
-  final Function(String, bool)? onToggleSelection; // messageId, shiftKey
+  /// Callback when a message is toggled in selection mode
+  /// [messageId] - The ID of the message being toggled
+  /// [isRangeSelect] - Whether this is part of a range selection (shift+click)
+  final Function(String, bool)? onToggleSelection;
   final VoidCallback? onDelete;
   final Function(String)? onEdit;
+  final Function(String, bool)? onShiftClick;
 
   const EnhancedChatMessage({
     super.key,
@@ -36,6 +43,7 @@ class EnhancedChatMessage extends StatefulWidget {
     this.onToggleSelection,
     this.onDelete,
     this.onEdit,
+    this.onShiftClick,
   });
 
   @override
@@ -43,21 +51,33 @@ class EnhancedChatMessage extends StatefulWidget {
 }
 
 class _EnhancedChatMessageState extends State<EnhancedChatMessage> {
+  // UI state
   bool _showDiary = false;
   bool _isEditing = false;
   String _editedContent = '';
+  
+  // Controllers and focus
   final TextEditingController _editController = TextEditingController();
+  final FocusNode _focusNode = FocusNode();
+  
+  // Selection state
+  bool _isShiftPressed = false;
 
   @override
   void initState() {
     super.initState();
     _editedContent = widget.message.content;
     _editController.text = _editedContent;
+    // Request focus to receive key events
+    _focusNode.requestFocus();
+    // Initialize shift key state
+    _updateShiftKeyState();
   }
 
   @override
   void dispose() {
     _editController.dispose();
+    _focusNode.dispose();
     super.dispose();
   }
 
@@ -69,9 +89,14 @@ class _EnhancedChatMessageState extends State<EnhancedChatMessage> {
   // Handle right-click on minion bubbles for diary toggle
   void _handleContextMenu(TapDownDetails details) {
     if (_isMinion && widget.message.internalDiary != null && !widget.isSelectionMode) {
-      setState(() {
-        _showDiary = !_showDiary;
-      });
+      // Check if this is a right-click using the details.kind
+      // Note: For web/desktop, we can use the kind property
+      // For mobile, we might need to handle long press instead
+      if (details.kind == PointerDeviceKind.mouse) {
+        setState(() {
+          _showDiary = !_showDiary;
+        });
+      }
     }
   }
 
@@ -82,13 +107,26 @@ class _EnhancedChatMessageState extends State<EnhancedChatMessage> {
     }
   }
 
+  // Track shift key state
+  void _updateShiftKeyState() {
+    setState(() {
+      _isShiftPressed = HardwareKeyboard.instance.logicalKeysPressed.contains(LogicalKeyboardKey.shiftLeft) ||
+                      HardwareKeyboard.instance.logicalKeysPressed.contains(LogicalKeyboardKey.shiftRight);
+    });
+  }
+
+  // Handle key events to detect shift key
+  void _handleKeyEvent(KeyEvent event) {
+    _updateShiftKeyState();
+  }
+
   // Handle bubble click in selection mode
   void _handleBubbleClick() {
     if (widget.isSelectionMode && widget.onToggleSelection != null) {
-      widget.onToggleSelection!(widget.message.id, false); // TODO: Handle shift key
+      widget.onToggleSelection!(widget.message.id, _isShiftPressed);
     }
   }
-
+  
   // Handle double-click to edit user messages
   void _handleDoubleClick() {
     if (_isUser && !widget.isSelectionMode) {
@@ -117,22 +155,32 @@ class _EnhancedChatMessageState extends State<EnhancedChatMessage> {
 
   @override
   Widget build(BuildContext context) {
-    // System messages get special treatment
-    if (_isSystem) {
-      return _buildSystemMessage(context);
-    }
+    // Use KeyboardListener to detect shift key
+    return KeyboardListener(
+      focusNode: _focusNode,
+      onKeyEvent: _handleKeyEvent,
+      child: Builder(
+        builder: (context) {
+          // System messages get special treatment
+          if (_isSystem) {
+            return _buildSystemMessage(context);
+          }
 
-    // Show typing indicator for processing messages
-    if (_isMinion && widget.isProcessing && widget.message.content.trim().isEmpty) {
-      return _buildTypingMessage(context);
-    }
+          // Show typing indicator for processing messages
+          if (_isMinion && widget.isProcessing && widget.message.content.trim().isEmpty) {
+            return _buildTypingMessage(context);
+          }
 
-    return _buildRegularMessage(context);
+          return _buildRegularMessage(context);
+        },
+      ),
+    );
   }
 
   Widget _buildSystemMessage(BuildContext context) {
     final theme = Theme.of(context);
     final isError = widget.message.isError ?? false;
+    // theme is used in the BoxDecoration below
     
     return Center(
       child: Container(
@@ -140,13 +188,13 @@ class _EnhancedChatMessageState extends State<EnhancedChatMessage> {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
           color: isError 
-              ? theme.colorScheme.errorContainer.withOpacity(0.3)
-              : theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
+              ? theme.colorScheme.errorContainer.withValues(alpha: 0.3)
+              : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: isError 
-                ? theme.colorScheme.error.withOpacity(0.3)
-                : theme.colorScheme.outline.withOpacity(0.2),
+                ? theme.colorScheme.error.withValues(alpha: 0.3)
+                : theme.colorScheme.outline.withValues(alpha: 0.2),
           ),
         ),
         child: Text(
@@ -154,7 +202,7 @@ class _EnhancedChatMessageState extends State<EnhancedChatMessage> {
           style: theme.textTheme.bodySmall?.copyWith(
             color: isError 
                 ? theme.colorScheme.error
-                : theme.colorScheme.onSurface.withOpacity(0.7),
+                : theme.colorScheme.onSurface.withValues(alpha: 0.7),
             fontStyle: FontStyle.italic,
           ),
           textAlign: TextAlign.center,
@@ -196,8 +244,6 @@ class _EnhancedChatMessageState extends State<EnhancedChatMessage> {
   }
 
   Widget _buildRegularMessage(BuildContext context) {
-    final theme = Theme.of(context);
-    
     return GestureDetector(
       onTapDown: (details) => _handleContextMenu(details),
       onTap: _handleBubbleClick,
@@ -291,14 +337,14 @@ class _EnhancedChatMessageState extends State<EnhancedChatMessage> {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHigh.withOpacity(0.95),
+        color: theme.colorScheme.surfaceContainerHigh.withValues(alpha: 0.95),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: theme.colorScheme.primary.withOpacity(0.3),
+          color: theme.colorScheme.primary.withValues(alpha: 0.3),
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: Colors.black.withValues(alpha: 0.1),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -325,14 +371,8 @@ class _EnhancedChatMessageState extends State<EnhancedChatMessage> {
             ],
           ),
           const SizedBox(height: 12),
-          // TODO: Parse and display diary data properly
-          Text(
-            widget.message.internalDiary.toString(),
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurface.withOpacity(0.8),
-              fontFamily: 'monospace',
-            ),
-          ),
+          // Display diary data with better formatting
+          _buildFormattedDiaryText(widget.message.internalDiary),
         ],
       ),
     ).animate()
@@ -352,54 +392,106 @@ class _EnhancedChatMessageState extends State<EnhancedChatMessage> {
     final bubbleColor = _getBubbleColor(context);
     final textColor = _getTextColor(context);
     
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: bubbleColor,
-        borderRadius: _getBorderRadius(),
-        border: widget.isSelected 
-            ? Border.all(
-                color: theme.colorScheme.primary,
-                width: 2,
-              )
-            : null,
-        boxShadow: widget.isSelected 
-            ? [
-                BoxShadow(
-                  color: theme.colorScheme.primary.withOpacity(0.3),
-                  blurRadius: 12,
-                  spreadRadius: 2,
-                ),
-              ]
-            : [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.1),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Message header
-          _buildMessageHeader(context, textColor),
-          
-          const SizedBox(height: 8),
-          
-          // Message content
-          if (_isEditing && _isUser)
-            _buildEditingInterface(context)
-          else
-            ChatStreamingText(
-              content: widget.message.content,
-              isStreaming: widget.isProcessing,
-              isMinion: _isMinion,
-              minionColor: textColor,
-            ),
-        ],
+    return GestureDetector(
+      onTap: _handleBubbleClick,
+      onDoubleTap: _handleDoubleClick,
+      onSecondaryTapDown: _isMinion ? _handleContextMenu : null,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: bubbleColor,
+          borderRadius: _getBorderRadius(),
+          border: widget.isSelected 
+              ? Border.all(
+                  color: theme.colorScheme.primary,
+                  width: 2,
+                )
+              : null,
+          boxShadow: widget.isSelected 
+              ? [
+                  BoxShadow(
+                    color: theme.colorScheme.primary.withValues(alpha: 0.3),
+                    blurRadius: 12,
+                    spreadRadius: 2,
+                  ),
+                ]
+              : [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.1),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Message header
+            _buildMessageHeader(context, textColor),
+            
+            const SizedBox(height: 8),
+            
+            // Message content
+            if (_isEditing && _isUser)
+              _buildEditingInterface(context)
+            else
+              ChatStreamingText(
+                content: widget.message.content,
+                isStreaming: widget.isProcessing,
+                isMinion: _isMinion,
+                minionColor: textColor,
+              ),
+          ],
+        ),
       ),
     );
+  }
+
+  Widget _buildFormattedDiaryText(dynamic diaryData) {
+    final theme = Theme.of(context);
+
+    if (diaryData == null) {
+      return Text(
+        'No diary data available',
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+          fontStyle: FontStyle.italic,
+        ),
+      );
+    }
+
+    // Try to format the diary data nicely
+    String displayText;
+    try {
+      if (diaryData is Map) {
+        // Pretty print JSON-like data
+        displayText = _formatJson(diaryData);
+      } else if (diaryData is List) {
+        // Handle list data
+        displayText = diaryData.map((item) => '• $item').join('\n');
+      } else {
+        // Fallback to string representation
+        displayText = diaryData.toString();
+      }
+    } catch (e) {
+      // If formatting fails, use toString
+      displayText = diaryData.toString();
+    }
+
+    return Text(
+      displayText,
+      style: theme.textTheme.bodySmall?.copyWith(
+        color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
+        fontFamily: 'monospace',
+        height: 1.4,
+      ),
+    );
+  }
+
+  String _formatJson(Map data) {
+    // Simple JSON formatting
+    final entries = data.entries.map((e) => '  "${e.key}": ${e.value}');
+    return '{\n${entries.join(',\n')}\n}';
   }
 
   Widget _buildMessageHeader(BuildContext context, Color? textColor) {
@@ -425,7 +517,7 @@ class _EnhancedChatMessageState extends State<EnhancedChatMessage> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
-                        color: (textColor ?? theme.colorScheme.primary).withOpacity(0.2),
+                        color: (textColor ?? theme.colorScheme.primary).withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
@@ -446,52 +538,56 @@ class _EnhancedChatMessageState extends State<EnhancedChatMessage> {
         Text(
           _formatTimestamp(widget.message.timestamp),
           style: theme.textTheme.bodySmall?.copyWith(
-            color: (textColor ?? theme.colorScheme.onSurface).withOpacity(0.6),
+            color: (textColor ?? theme.colorScheme.onSurface).withValues(alpha: 0.6),
           ),
         ),
         
         // Options menu for user messages (when not in selection mode)
         if (_isUser && !widget.isSelectionMode) ...[
           const SizedBox(width: 8),
-          PopupMenuButton<String>(
-            onSelected: (value) {
-              switch (value) {
-                case 'edit':
-                  setState(() {
-                    _isEditing = true;
-                  });
-                  break;
-                case 'delete':
-                  widget.onDelete?.call();
-                  break;
-              }
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: 'edit',
-                child: Row(
-                  children: [
-                    Icon(Icons.edit, size: 16),
-                    SizedBox(width: 8),
-                    Text('Edit'),
-                  ],
+          Material(
+            type: MaterialType.transparency,
+            child: PopupMenuButton<String>(
+              onSelected: (value) {
+                switch (value) {
+                  case 'edit':
+                    setState(() {
+                      _isEditing = true;
+                    });
+                    break;
+                  case 'delete':
+                    widget.onDelete?.call();
+                    break;
+                }
+              },
+              itemBuilder: (context) => const [
+                PopupMenuItem(
+                  value: 'edit',
+                  child: Row(
+                    children: [
+                      Icon(Icons.edit, size: 16),
+                      SizedBox(width: 8),
+                      Text('Edit'),
+                    ],
+                  ),
                 ),
-              ),
-              const PopupMenuItem(
-                value: 'delete',
-                child: Row(
-                  children: [
-                    Icon(Icons.delete, size: 16),
-                    SizedBox(width: 8),
-                    Text('Delete'),
-                  ],
+                PopupMenuItem(
+                  value: 'delete',
+                  child: Row(
+                    children: [
+                      Icon(Icons.delete, size: 16),
+                      SizedBox(width: 8),
+                      Text('Delete'),
+                    ],
+                  ),
                 ),
+              ],
+              child: Icon(
+                Icons.more_vert,
+                size: 16,
+                color:
+                    (textColor ?? theme.colorScheme.onSurface).withValues(alpha: 0.5),
               ),
-            ],
-            child: Icon(
-              Icons.more_vert,
-              size: 16,
-              color: (textColor ?? theme.colorScheme.onSurface).withOpacity(0.5),
             ),
           ),
         ],
@@ -514,7 +610,7 @@ class _EnhancedChatMessageState extends State<EnhancedChatMessage> {
               borderSide: BorderSide.none,
             ),
             filled: true,
-            fillColor: Colors.white.withOpacity(0.1),
+            fillColor: Colors.white.withValues(alpha: 0.1),
             contentPadding: const EdgeInsets.all(12),
           ),
         ),
@@ -529,7 +625,7 @@ class _EnhancedChatMessageState extends State<EnhancedChatMessage> {
               icon: const Icon(Icons.close, size: 16),
               label: const Text('Cancel'),
               style: TextButton.styleFrom(
-                foregroundColor: Colors.white.withOpacity(0.8),
+                foregroundColor: Colors.white.withValues(alpha: 0.8),
               ),
             ),
             
@@ -540,7 +636,7 @@ class _EnhancedChatMessageState extends State<EnhancedChatMessage> {
               icon: const Icon(Icons.save, size: 16),
               label: const Text('Save'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white.withOpacity(0.2),
+                backgroundColor: Colors.white.withValues(alpha: 0.2),
                 foregroundColor: Colors.white,
               ),
             ),
@@ -561,7 +657,7 @@ class _EnhancedChatMessageState extends State<EnhancedChatMessage> {
         color: theme.colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: theme.colorScheme.outline.withOpacity(0.2),
+          color: theme.colorScheme.outline.withValues(alpha: 0.2),
         ),
       ),
       child: Column(
@@ -610,7 +706,7 @@ class _EnhancedChatMessageState extends State<EnhancedChatMessage> {
     final theme = Theme.of(context);
     
     if (_isUser) {
-      return const Color(0xFFF59E0B); // Amber for user
+      return const Color.fromARGB(255, 77, 163, 255); // Amber for user
     }
     
     if (_isMinion && widget.minionConfig?.chatColor != null) {
@@ -643,7 +739,7 @@ class _EnhancedChatMessageState extends State<EnhancedChatMessage> {
   }
 
   BorderRadius _getBorderRadius() {
-    const radius = 18.0;
+    const radius = 10.0;
     
     if (_isUser) {
       return const BorderRadius.only(

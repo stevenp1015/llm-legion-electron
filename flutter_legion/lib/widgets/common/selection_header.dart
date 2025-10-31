@@ -2,6 +2,7 @@
 /// Shows Delete, Show Diary, and Done buttons when messages are selected
 /// 
 /// Replicates the React SelectionHeader.tsx with Flutter animations
+library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';

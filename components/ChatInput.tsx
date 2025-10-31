@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { PaperAirplaneIcon } from './Icons';
 import { getAnimationConfig, ANIMATION_VARIANTS } from '../animations/config';
+import StarBorder from './StarBorder';
 
 interface ChatInputProps {
   onSendMessage: (content: string) => void;
@@ -61,8 +62,8 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isSending, disable
 
 
   return (
-    <div className={`px-3 py-3 bg-zinc-100/45 border-t border-zinc-200 ${disabled ? 'opacity-50' : ''}`}>
-      <div className="flex items-center gap-3 bg-zinc-50/30 border border-zinc-100 rounded-md p-0.5">
+    <div className={`px-3 py-3 mx-auto justify-center bg-transparent border-t border-zinc-200 ${disabled ? 'opacity-50' : ''}`}> {/* Text Input Full Section */}
+      <div className="flex items-center gap-3 border border-slate-200 rounded-3xl w-[50rem] p-0 bg-transparent"> {/* Behind Text Input + Button */}
         <textarea
           ref={textareaRef}
           value={inputValue}
@@ -71,18 +72,23 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isSending, disable
           placeholder={disabled ? "Pause autonomous mode to send a message..." : "Type something..."}
           className="chat-input-textarea 
           flex-grow
-          p-1.5
-          bg-zinc-50 
+          max-w-3xl
+          p-4
+          bg-zinc-100 
           text-black 
           text-sm 
           placeholder-neutral-500 
-          border-0
+          border
+          border-slate-300
           resize-none
-          rounded-sm
+          rounded-3xl
           focus:ring-0
           outline-none 
           max-h-36
-          overflow-y-auto
+          min-h-12
+          shadow-lg
+          content-center
+          overflow-y-hidden
           scrollbar-thin 
           scrollbar-thumb-neutral-400/0 
           scrollbar-track-zinc-200/0"
@@ -115,7 +121,7 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isSending, disable
             ...ANIMATION_VARIANTS.button.hover
           }}
           transition={getAnimationConfig('haptic')}
-        >
+          >
           {/* Loading shimmer effect */}
           {isSending && (
             <motion.div
@@ -123,11 +129,11 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isSending, disable
               initial={{ x: '-100%' }}
               animate={{ x: '100%' }}
               transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-            />
-          )}
+              />
+            )}
           
           <AnimatePresence mode="wait">
-            {isSending ? (
+            {isSending ? (  
               <motion.div
                 key="sending"
                 initial={{ opacity: 0, rotate: -90, scale: 0.8 }}
@@ -139,13 +145,13 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isSending, disable
                 exit={{ opacity: 0, rotate: 90, scale: 0.8 }}
                 transition={getAnimationConfig('stiff')}
                 className="flex items-center justify-center"
-              >
+                >
                 {/* Custom loading dots instead of boring spinner */}
                 <div className="flex space-x-1">
                   {[0, 1, 2].map((index) => (
                     <motion.div
-                      key={index}
-                      className="w-1.5 h-1.5 bg-white rounded-full"
+                    key={index}
+                    className="w-1.5 h-1.5 bg-white rounded-full"
                       animate={{
                         scale: [1, 1.3, 1],
                         opacity: [0.6, 1, 0.6]
@@ -156,26 +162,26 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isSending, disable
                         delay: index * 0.15,
                         ease: 'easeInOut'
                       }}
-                    />
-                  ))}
+                      />
+                    ))}
                 </div>
               </motion.div>
             ) : (
               <motion.div
-                key="send"
-                initial={{ opacity: 0, rotate: 90, scale: 0.8 }}
-                animate={{ 
-                  opacity: 1, 
-                  rotate: 0, 
-                  scale: 1 
-                }}
-                exit={{ opacity: 0, rotate: -90, scale: 0.8 }}
-                transition={getAnimationConfig('stiff')}
+              key="send"
+              initial={{ opacity: 0, rotate: 90, scale: 0.8 }}
+              animate={{ 
+                opacity: 1, 
+                rotate: 0, 
+                scale: 1 
+              }}
+              exit={{ opacity: 0, rotate: -90, scale: 0.8 }}
+              transition={getAnimationConfig('stiff')}
                 whileHover={{ 
                   rotate: -10,
                   scale: 1.1
                 }}
-              >
+                >
                 <PaperAirplaneIcon className="w-5 h-5" />
               </motion.div>
             )}

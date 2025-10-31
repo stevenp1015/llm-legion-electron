@@ -2,6 +2,7 @@
 /// Each minion gets a unique, beautiful gradient based on their name
 /// 
 /// Replicates the React MinionIcon.tsx with Flutter gradients and shadows
+library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
