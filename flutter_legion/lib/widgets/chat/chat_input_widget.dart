@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
 class ChatInputWidget extends StatefulWidget {
@@ -112,7 +111,7 @@ class _ChatInputWidgetState extends State<ChatInputWidget> {
                         border: InputBorder.none,
                         contentPadding: const EdgeInsets.symmetric(
                           vertical: 12,
-                          horizontal: 4,
+                          horizontal: 12,
                         ),
                       ),
                       style: theme.textTheme.bodyLarge,

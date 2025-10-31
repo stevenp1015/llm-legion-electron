@@ -28,6 +28,7 @@ dependencies:
   flutter_animate: ^4.3.0
   google_fonts: ^6.1.0
   flutter_markdown: ^0.6.18
+  macos_ui: ^2.0.5
   
   # Data & Storage
   shared_preferences: ^2.2.2
@@ -44,6 +45,10 @@ dependencies:
   
   # Icons
   cupertino_icons: ^1.0.8
+
+  # Local MCP Client
+  mcp_client:
+    path: mcp_client-main
 
 dev_dependencies:
   flutter_test:

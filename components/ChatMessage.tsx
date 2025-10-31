@@ -129,7 +129,7 @@ const ToolCallBubble: React.FC<{ toolCall: ToolCall, minionName: string, minionC
             }}
             initial={{ x: '-100%' }}
             animate={{ x: '100%' }}
-            transition={{ duration: 0.3, ease: 'linear' }}
+            transition={{ duration: 0.1, ease: 'linear' }}
           />
         )}
       </motion.button>
@@ -137,15 +137,15 @@ const ToolCallBubble: React.FC<{ toolCall: ToolCall, minionName: string, minionC
       <AnimatePresence>
         {isExpanded && (
           <motion.div 
-            initial={{ height: 0, opacity: 0, scaleY: 0.8 }}
-            animate={{ height: 'auto', opacity: 1, scaleY: 1 }}
-            exit={{ height: 0, opacity: 0, scaleY: 0.8 }}
-            transition={{ duration: 0.3, ease: 'easeOut' }}
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.1, ease: 'linear' }}
             className="overflow-hidden mt-2 origin-top"
             style={{ width: '100%' }}
           >
             <div className="p-3 bg-zinc-100 border border-zinc-300 rounded-lg text-sm">
-              <div className="font-semibold text-teal-700 mb-2">Tool Parameters:</div>
+              <div className="font-semibold text-sm text-teal-700 mb-2">Tool Parameters:</div>
               <pre className="text-zinc-700 whitespace-pre-wrap font-mono text-sm break-all">
                 {JSON.stringify(toolCall.arguments, null, 2)}
               </pre>
@@ -222,7 +222,7 @@ const ToolOutputBubble: React.FC<{ toolOutput: string, toolName: string, minionC
             }}
             initial={{ x: '-100%' }}
             animate={{ x: '100%' }}
-            transition={{ duration: 0.3, ease: 'linear' }}
+            transition={{ duration: 0.1, ease: 'linear' }}
           />
         )}
       </button>
@@ -230,10 +230,10 @@ const ToolOutputBubble: React.FC<{ toolOutput: string, toolName: string, minionC
       <AnimatePresence>
         {isExpanded && (
           <motion.div 
-            initial={{ height: 0, opacity: 0, scaleY: 0.8 }}
-            animate={{ height: 'auto', opacity: 1, scaleY: 1 }}
-            exit={{ height: 0, opacity: 0, scaleY: 0.8 }}
-            transition={{ duration: 0.3, ease: 'easeOut' }}
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.1, ease: 'linear' }}
             className="overflow-hidden mt-2 origin-top"
             style={{ width: '100%' }}
           >

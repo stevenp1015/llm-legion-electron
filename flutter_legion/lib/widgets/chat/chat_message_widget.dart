@@ -32,7 +32,7 @@ class ChatMessageWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     return GestureDetector(
       onLongPress: isSelectionMode ? null : onEnterSelectionMode,
       onTap: isSelectionMode ? () => onToggleSelection?.call(false) : null,
@@ -43,22 +43,24 @@ class ChatMessageWidget extends StatelessWidget {
         decoration: BoxDecoration(
           color: _getMessageBackgroundColor(context),
           borderRadius: BorderRadius.circular(12),
-          border: isSelected 
-            ? Border.all(color: theme.colorScheme.primary, width: 2)
-            : null,
-          boxShadow: isSelected ? [
-            BoxShadow(
-              color: theme.colorScheme.primary.withAlpha(50),
-              blurRadius: 8,
-              spreadRadius: 2,
-            )
-          ] : [
-            BoxShadow(
-              color: Colors.black.withAlpha(25),
-              blurRadius: 4,
-              offset: const Offset(0, 2),
-            ),
-          ],
+          border: isSelected
+              ? Border.all(color: theme.colorScheme.primary, width: 2)
+              : null,
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: theme.colorScheme.primary.withAlpha(50),
+                    blurRadius: 8,
+                    spreadRadius: 2,
+                  )
+                ]
+              : [
+                  BoxShadow(
+                    color: Colors.black.withAlpha(25),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -76,18 +78,19 @@ class ChatMessageWidget extends StatelessWidget {
             ],
           ],
         ),
-      ).animate(target: isSelected ? 1.0 : 0.0)
-        .scale(begin: const Offset(1.0, 1.0), end: const Offset(1.02, 1.02))
-        .shimmer(
-          duration: 800.ms,
-          color: theme.colorScheme.primary.withAlpha(100),
-        ),
+      )
+          .animate(target: isSelected ? 1.0 : 0.0)
+          .scale(begin: const Offset(1.0, 1.0), end: const Offset(1.02, 1.02))
+          .shimmer(
+            duration: 800.ms,
+            color: theme.colorScheme.primary.withAlpha(100),
+          ),
     );
   }
 
   Widget _buildMessageHeader(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     return Row(
       children: [
         _buildAvatar(),
@@ -108,7 +111,8 @@ class ChatMessageWidget extends StatelessWidget {
                   if (message.senderRole != null) ...[
                     const SizedBox(width: 8),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
                         color: _getSenderColor().withAlpha(50),
                         borderRadius: BorderRadius.circular(4),
@@ -167,36 +171,37 @@ class ChatMessageWidget extends StatelessWidget {
 
   Widget _buildAvatar() {
     final color = _getSenderColor();
-    
+
     return CircleAvatar(
       radius: 18,
       backgroundColor: color,
       child: message.senderType == MessageSender.user
-        ? Icon(Icons.person, color: Colors.white, size: 20)
-        : message.senderType == MessageSender.system
-          ? Icon(Icons.settings, color: Colors.white, size: 20)
-          : Text(
-              message.senderName.substring(0, 1).toUpperCase(),
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-              ),
-            ),
+          ? Icon(Icons.person, color: Colors.white, size: 20)
+          : message.senderType == MessageSender.system
+              ? Icon(Icons.settings, color: Colors.white, size: 20)
+              : Text(
+                  message.senderName.substring(0, 1).toUpperCase(),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
     );
   }
 
   Widget _buildMessageContent(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
       child: SelectableText(
         message.content,
         style: theme.textTheme.bodyLarge?.copyWith(
           color: minionConfig?.fontColor != null
-            ? Color(int.parse(minionConfig!.fontColor!.replaceFirst('#', '0xff')))
-            : theme.colorScheme.onSurface,
+              ? Color(
+                  int.parse(minionConfig!.fontColor!.replaceFirst('#', '0xff')))
+              : theme.colorScheme.onSurface,
           height: 1.4,
         ),
       ),
@@ -224,15 +229,16 @@ class ChatMessageWidget extends StatelessWidget {
           ),
         ),
       ],
-    ).animate(onPlay: (controller) => controller.repeat())
-      .fadeIn(duration: 800.ms)
-      .then()
-      .fadeOut(duration: 800.ms);
+    )
+        .animate(onPlay: (controller) => controller.repeat())
+        .fadeIn(duration: 800.ms)
+        .then()
+        .fadeOut(duration: 800.ms);
   }
 
   Widget _buildToolResults(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -277,12 +283,13 @@ class ChatMessageWidget extends StatelessWidget {
 
   Color _getMessageBackgroundColor(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     if (minionConfig?.chatColor != null) {
-      final color = Color(int.parse(minionConfig!.chatColor!.replaceFirst('#', '0xff')));
+      final color =
+          Color(int.parse(minionConfig!.chatColor!.replaceFirst('#', '0xff')));
       return color.withAlpha(30);
     }
-    
+
     switch (message.senderType) {
       case MessageSender.user:
         return theme.colorScheme.primaryContainer;
@@ -295,9 +302,10 @@ class ChatMessageWidget extends StatelessWidget {
 
   Color _getSenderColor() {
     if (minionConfig?.chatColor != null) {
-      return Color(int.parse(minionConfig!.chatColor!.replaceFirst('#', '0xff')));
+      return Color(
+          int.parse(minionConfig!.chatColor!.replaceFirst('#', '0xff')));
     }
-    
+
     switch (message.senderType) {
       case MessageSender.user:
         return const Color(0xFF3B82F6); // Blue
@@ -312,7 +320,7 @@ class ChatMessageWidget extends StatelessWidget {
     final dateTime = DateTime.fromMillisecondsSinceEpoch(timestamp);
     final now = DateTime.now();
     final difference = now.difference(dateTime);
-    
+
     if (difference.inDays > 0) {
       return '${difference.inDays}d ago';
     } else if (difference.inHours > 0) {

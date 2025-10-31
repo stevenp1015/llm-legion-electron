@@ -116,7 +116,7 @@ const MinionBuddylist: React.FC<MinionBuddylistProps> = ({
                     <ChevronRightIcon className="w-4 h-4" />
                   </motion.div>
                   <div 
-                    className="w-3 h-3 rounded-full border-2 border-white shadow-sm"
+                    className="w-3 h-3 rounded-full border-1 border-white shadow-sm"
                     style={{ backgroundColor: group.minionConfig.chatColor || '#059669' }}
                   />
                   <span className="font-medium">{group.minionName}</span>
@@ -198,7 +198,7 @@ const MinionBuddylist: React.FC<MinionBuddylistProps> = ({
                             e.stopPropagation();
                             onDeleteChannel(chat.id);
                           }}
-                          className={`absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md opacity-0 group-hover:opacity-80 transition-opacity ${
+                          className={`absolute right-2 items-center top-1/2 -translate-y-1/2 rounded-md opacity-0 group-hover:opacity-80 transition-opacity ${
                             isActive ? 'text-white hover:text-red-200' : 'text-neutral-400 hover:text-red-500'
                           }`}
                           title={`Delete ${chat.name}`}
@@ -207,7 +207,7 @@ const MinionBuddylist: React.FC<MinionBuddylistProps> = ({
                           whileHover="hover"
                           whileTap="tap"
                         >
-                          <TrashIcon className="w-3 h-3"/>
+                          <TrashIcon className="w-3 h-3 -translate-y-2"/>
                         </motion.button>
                       </div>
                     );

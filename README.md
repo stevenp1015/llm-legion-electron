@@ -99,7 +99,7 @@ The repository is organized to separate concerns between the desktop framework, 
 
 ```
 .
-├── /Electron/
+├── /electron/
 │   # Contains the core Electron-specific files.
 │   ├── main.cjs       # The entry point for the Electron main process. Handles window creation, system events, and native OS integration.
 │   └── preload.cjs    # The preload script, which runs in a privileged context and acts as a secure bridge between the web-based renderer process and the Node.js-powered main process.

@@ -22,6 +22,7 @@
     "bezier-easing": "^2.1.0",
     "electron-context-menu": "^4.1.0",
     "electron-store": "^10.1.0",
+    "fix-path": "^5.0.0",
     "flowtoken": "^1.0.40",
     "motion": "^12.23.12",
     "prettier": "^3.6.2",
@@ -60,7 +61,11 @@
     ],
     "mac": {
       "category": "public.app-category.developer-tools",
-      "target": "dmg"
+      "target": "dmg",
+      "extendInfo": {
+        "NSQuitAlwaysKeepsWindows": false,
+        "NSSupportsAutomaticTermination": false
+      }
     },
     "win": {
       "target": "nsis"

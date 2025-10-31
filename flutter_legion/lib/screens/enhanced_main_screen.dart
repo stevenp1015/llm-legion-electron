@@ -1,9 +1,12 @@
-/// Enhanced main screen with sophisticated UX and Vista aero effects
+/// Enhanced main screen with macOS command-center styling
 /// The complete transformation of your React masterpiece into Flutter glory
-/// 
-/// Features: selection system, Vista glass, morphing channels, animated everything
+///
+/// Features: selection system, glassy panels, animated everything
+library;
 
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
+import 'package:macos_ui/macos_ui.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../providers/app_provider.dart';
@@ -12,15 +15,12 @@ import '../services/legion_api_service.dart';
 import '../models/chat_message.dart';
 import '../models/channel.dart';
 import '../widgets/chat/enhanced_chat_message.dart';
-import '../widgets/common/minion_avatar.dart';
-import '../widgets/common/animated_send_button.dart';
 import '../widgets/common/selection_header.dart';
-import '../widgets/common/morphing_channel_list.dart';
-import '../widgets/common/auto_hiding_scrollbar.dart';
-import '../theming/vista_effects.dart';
 import '../animations/config.dart';
 import '../widgets/panels/channel_form_dialog.dart';
 import '../widgets/panels/minion_config_panel.dart';
+import 'mcp_manager_screen.dart';
+import 'analytics_dashboard_screen.dart';
 import 'dart:async';
 
 class EnhancedMainScreen extends StatefulWidget {
@@ -37,18 +37,22 @@ class _EnhancedMainScreenState extends State<EnhancedMainScreen>
   String? _currentChannelId;
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _inputController = TextEditingController();
+  final FocusNode _inputFocusNode = FocusNode();
   Timer? _autoChatTimer;
 
   @override
   void initState() {
     super.initState();
+    _inputController.addListener(_handleInputChanged);
     _initializeServices();
   }
 
   @override
   void dispose() {
+    _inputController.removeListener(_handleInputChanged);
     _scrollController.dispose();
     _inputController.dispose();
+    _inputFocusNode.dispose();
     _autoChatTimer?.cancel();
     super.dispose();
   }
@@ -56,7 +60,6 @@ class _EnhancedMainScreenState extends State<EnhancedMainScreen>
   Future<void> _initializeServices() async {
     _legionService = context.read<LegionApiService>();
     final appProvider = context.read<AppProvider>();
-    final chatProvider = context.read<ChatProvider>();
 
     try {
       await _legionService.initialize();
@@ -89,7 +92,7 @@ class _EnhancedMainScreenState extends State<EnhancedMainScreen>
       final result = await _legionService.getMessages(channelId, 50);
       chatProvider.setMessages(channelId, result.messages, result.hasMore);
       
-      // Smooth scroll to bottom with Vista animation
+      // Smooth scroll to bottom with easing
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_scrollController.hasClients) {
           _scrollController.animateTo(
@@ -105,51 +108,16 @@ class _EnhancedMainScreenState extends State<EnhancedMainScreen>
   }
 
   Future<void> _sendMessage(String content) async {
-    if (_currentChannelId == null || content.trim().isEmpty) return;
-    
-    final chatProvider = context.read<ChatProvider>();
-    
-    // Create and add user message
-    final userMessage = chatProvider.createUserMessage(
-      _currentChannelId!,
-      content.trim(),
-      LegionApiService.legionCommanderName,
-    );
-    
-    chatProvider.addMessage(_currentChannelId!, userMessage);
-    _inputController.clear();
-    
-    // Auto-scroll to bottom
-    _autoScrollIfEnabled();
+    if (content.trim().isEmpty) return;
 
-    // Process message through Legion API
-    await _legionService.processMessageTurn(
-      channelId: _currentChannelId!,
-      triggeringMessage: userMessage,
-      onMinionResponse: (message) {
-        chatProvider.upsertMessage(message);
-        _autoScrollIfEnabled();
-      },
-      onMinionResponseChunk: (channelId, messageId, chunk) {
-        chatProvider.processMessageChunk(channelId, messageId, chunk);
-        _autoScrollIfEnabled();
-      },
-      onMinionProcessingUpdate: (minionName, isProcessing) {
-        chatProvider.setActiveMinionProcessor(minionName, isProcessing);
-      },
-      onSystemMessage: (message) {
-        chatProvider.addMessage(message.channelId, message);
-        _autoScrollIfEnabled();
-      },
-      onRegulatorReport: (message) {
-        chatProvider.addMessage(message.channelId, message);
-        _autoScrollIfEnabled();
-      },
-      onToolUpdate: (message) {
-        chatProvider.upsertMessage(message);
-        _autoScrollIfEnabled();
-      },
-    );
+    final chatProvider = context.read<ChatProvider>();
+    await chatProvider.sendMessage(content);
+    
+    _inputController.clear();
+    if (mounted) {
+      setState(() {});
+    }
+    _autoScrollIfEnabled();
   }
 
   void _autoScrollIfEnabled() {
@@ -165,6 +133,20 @@ class _EnhancedMainScreenState extends State<EnhancedMainScreen>
         }
       });
     }
+  }
+
+  void _handleInputChanged() {
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  Future<void> _attemptSend(Channel currentChannel) async {
+    final disabled = currentChannel.type == ChannelType.minionMinionAuto &&
+        currentChannel.isAutoModeActive;
+    if (disabled) return;
+    final text = _inputController.text.trim();
+    if (text.isEmpty) return;
+    await _sendMessage(text);
   }
 
   void _rescheduleAutoChat() {
@@ -256,372 +238,377 @@ class _EnhancedMainScreenState extends State<EnhancedMainScreen>
     }
   }
 
+  void _handleManualRegulatorCall() async {
+    if (_currentChannelId == null) return;
+    final chatProvider = context.read<ChatProvider>();
+
+    await _legionService.manuallyTriggerRegulator(
+      _currentChannelId!,
+      (reportMessage) {
+        chatProvider.addMessage(reportMessage.channelId, reportMessage);
+        _autoScrollIfEnabled();
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: Consumer2<AppProvider, ChatProvider>(
-        builder: (context, appProvider, chatProvider, child) {
-          if (!appProvider.isServiceInitialized) {
-            return _buildLoadingState(context);
-          }
+    final appProvider = context.watch<AppProvider>();
+    final macosTheme = MacosTheme.of(context);
 
-          return Stack(
-            children: [
-              // Main content with Vista glass effect
-              Row(
-                children: [
-                  // Channel sidebar
-                  MorphingChannelList(
-                    channels: appProvider.channels,
-                    currentChannelId: chatProvider.currentChannelId,
-                    onChannelSelected: _selectChannel,
-                    onEditChannel: (channel) async {
-                      final result = await ChannelFormDialog.show(context, initial: channel);
-                      if (result != null) {
-                        // Reselect to refresh view
-                        _selectChannel(result.id);
-                      }
-                    },
-                    onCreateChannel: () async {
-                      final created = await ChannelFormDialog.show(context);
-                      if (created != null) {
-                        _selectChannel(created.id);
-                      }
-                    },
-                  ),
-                  
-                  // Main chat area
-                  Expanded(
-                    child: VistaGlass(
-                      opacity: 0.95,
-                      blurIntensity: 12.0,
-                      borderRadius: const BorderRadius.only(
-                        topLeft: Radius.circular(16),
-                        bottomLeft: Radius.circular(16),
-                      ),
-                      child: _buildChatArea(context, appProvider, chatProvider),
-                    ),
-                  ),
-                ],
-              ),
-              
-              // Floating selection header
-              SelectionHeader(
-                isVisible: chatProvider.isSelectionMode,
-                selectedCount: chatProvider.selectedMessageIds.length,
-                hasMinions: chatProvider.currentChannelMessages
-                    .where((m) => chatProvider.selectedMessageIds.contains(m.id))
-                    .any((m) => m.senderType == MessageSender.ai && m.internalDiary != null),
-                onDelete: _handleDeleteSelected,
-                onShowDiary: _handleToggleDiary,
-                onDone: () => chatProvider.toggleSelectionMode(),
-              ),
-            ],
+    return MacosWindow(
+      sidebar: Sidebar(
+        minWidth: 240,
+        dragClosed: false,
+        maxWidth: 300,
+        top: _buildSidebarHeader(context, appProvider),
+        builder: (context, controller) {
+          final chatProvider = context.watch<ChatProvider>();
+          return _buildSidebarItems(
+            context,
+            controller,
+            appProvider,
+            chatProvider,
           );
         },
+      ),
+      child: MacosScaffold(
+        backgroundColor: macosTheme.canvasColor,
+        toolBar: _buildToolbar(context),
+        children: [
+          ContentArea(
+            minWidth: 640,
+            builder: (context, scrollController) {
+              final chatProvider = context.watch<ChatProvider>();
+              return _buildContentArea(context, appProvider, chatProvider);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  ToolBar _buildToolbar(BuildContext context) {
+    return ToolBar(
+      height: 52,
+      title: const Text('Legion Command Center'),
+      titleWidth: 260,
+      actions: [
+        ToolBarIconButton(
+          label: 'MCP',
+          icon: const MacosIcon(CupertinoIcons.option),
+          showLabel: false,
+          tooltipMessage: 'Manage MCP servers',
+          onPressed: () => McpManagerScreen.show(context),
+        ),
+        ToolBarIconButton(
+          label: 'Regulator',
+          icon: const MacosIcon(CupertinoIcons.zzz),
+          showLabel: false,
+          tooltipMessage: 'Trigger regulator analysis',
+          onPressed: _handleManualRegulatorCall,
+        ),
+        ToolBarIconButton(
+          label: 'Analytics',
+          icon: const MacosIcon(CupertinoIcons.chart_bar_alt_fill),
+          showLabel: false,
+          tooltipMessage: 'Open analytics dashboard',
+          onPressed: () => AnalyticsDashboardScreen.show(context),
+        ),
+
+        ToolBarIconButton(
+          label: 'Minions',
+          icon: const MacosIcon(CupertinoIcons.person_add_solid),
+          showLabel: false,
+          tooltipMessage: 'Manage minion configurations',
+          onPressed: () => MinionConfigPanel.show(context),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSidebarHeader(BuildContext context, AppProvider appProvider) {
+    final typography = MacosTheme.of(context).typography;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+      child: Row(
+        children: [
+          Text(
+            'Channels',
+            style: typography.caption1.copyWith(fontWeight: FontWeight.w600),
+          ),
+          const Spacer(),
+          MacosIconButton(
+            onPressed: () async {
+              final created = await ChannelFormDialog.show(context);
+              if (created != null) {
+                _selectChannel(created.id);
+              }
+            },
+            icon: const MacosIcon(CupertinoIcons.add_circled),
+            boxConstraints: const BoxConstraints.tightFor(width: 32, height: 32),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSidebarItems(
+    BuildContext context,
+    ScrollController scrollController,
+    AppProvider appProvider,
+    ChatProvider chatProvider,
+  ) {
+    final channels = appProvider.channels;
+
+    if (channels.isEmpty) {
+      return ListView(
+        controller: scrollController,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 24),
+        children: const [
+          Text(
+            'No channels yet. Create one to start coordinating your legion.',
+            style: TextStyle(fontSize: 12),
+          ),
+        ],
+      );
+    }
+
+    final rawIndex = channels
+        .indexWhere((channel) => channel.id == chatProvider.currentChannelId);
+    final currentIndex = rawIndex >= 0
+        ? rawIndex
+        : (channels.isNotEmpty ? 0 : -1);
+
+    return SidebarItems(
+      scrollController: scrollController,
+      currentIndex: currentIndex,
+      onChanged: (index) => _selectChannel(channels[index].id),
+      items: [
+        for (final channel in channels)
+          SidebarItem(
+            leading: MacosIcon(
+              channel.type == ChannelType.userOnly
+                  ? CupertinoIcons.person_crop_circle
+                  : CupertinoIcons.chat_bubble,
+            ),
+            label: Text(
+              channel.name,
+              overflow: TextOverflow.ellipsis,
+            ),
+            trailing: channel.isAutoModeActive
+                ? const MacosIcon(CupertinoIcons.clock)
+                : null,
+          ),
+      ],
+    );
+  }
+
+  Widget _buildContentArea(
+    BuildContext context,
+    AppProvider appProvider,
+    ChatProvider chatProvider,
+  ) {
+    if (!appProvider.isServiceInitialized) {
+      return _buildLoadingState(context);
+    }
+
+    final currentChannel =
+        appProvider.getChannel(chatProvider.currentChannelId ?? '');
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+      child: Column(
+        children: [
+          SelectionHeader(
+            isVisible: chatProvider.isSelectionMode,
+            selectedCount: chatProvider.selectedMessageIds.length,
+            hasMinions: chatProvider.currentChannelMessages
+                .where(
+                  (m) => chatProvider.selectedMessageIds.contains(m.id),
+                )
+                .any(
+                  (m) =>
+                      m.senderType == MessageSender.ai &&
+                      m.internalDiary != null,
+                ),
+            onDelete: _handleDeleteSelected,
+            onShowDiary: _handleToggleDiary,
+            onDone: () => chatProvider.toggleSelectionMode(),
+          ),
+          if (chatProvider.isSelectionMode) const SizedBox(height: 12),
+          Expanded(
+            child: currentChannel == null
+                ? _buildEmptyState(context)
+                : _buildChatArea(
+                    context,
+                    appProvider,
+                    chatProvider,
+                    currentChannel,
+                  ),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildLoadingState(BuildContext context) {
-    final theme = Theme.of(context);
-    
+    final typography = MacosTheme.of(context).typography;
     return Center(
-      child: VistaGlass(
-        opacity: 0.9,
-        blurIntensity: 15.0,
-        borderRadius: BorderRadius.circular(20),
-        child: Container(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Custom spinning icon
-              Container(
-                width: 64,
-                height: 64,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF3B82F6), Color(0xFF10B981)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: theme.colorScheme.primary.withOpacity(0.3),
-                      blurRadius: 12,
-                      spreadRadius: 2,
-                    ),
-                  ],
-                ),
-                child: const Icon(
-                  Icons.military_tech,
-                  color: Colors.white,
-                  size: 32,
-                ),
-              ).animate(onPlay: (controller) => controller.repeat())
-                .rotate(duration: const Duration(seconds: 3))
-                .scale(
-                  begin: const Offset(1.0, 1.0),
-                  end: const Offset(1.1, 1.1),
-                  duration: const Duration(milliseconds: 1500),
-                  curve: Curves.easeInOut,
-                )
-                .then()
-                .scale(
-                  begin: const Offset(1.1, 1.1),
-                  end: const Offset(1.0, 1.0),
-                  duration: const Duration(milliseconds: 1500),
-                  curve: Curves.easeInOut,
-                ),
-              
-              const SizedBox(height: 24),
-              
-              Text(
-                'Initializing Legion Command Center',
-                style: theme.textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w300,
-                  color: theme.colorScheme.onSurface.withOpacity(0.9),
-                ),
-              ),
-              
-              const SizedBox(height: 8),
-              
-              Text(
-                'Preparing your minions for battle...',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.primary,
-                ),
-              ),
-            ],
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const ProgressCircle(radius: 21),
+          const SizedBox(height: 18),
+          Text(
+            'Initializing Legion Command Center…',
+            style: typography.headline.copyWith(fontWeight: FontWeight.w600),
           ),
-        ),
-      ).animate()
-        .fadeIn(
-          duration: SpringConfig.gentleDuration,
-          curve: SpringConfig.gentle,
-        )
-        .scale(
-          begin: const Offset(0.8, 0.8),
-          duration: SpringConfig.bouncyDuration,
-          curve: SpringConfig.bouncy,
-        ),
+          const SizedBox(height: 8),
+          Text(
+            'Spinning up MCP hub and calibrating minion diaries.',
+            textAlign: TextAlign.center,
+            style: typography.subheadline,
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _buildChatArea(BuildContext context, AppProvider appProvider, ChatProvider chatProvider) {
-    final currentChannel = appProvider.getChannel(chatProvider.currentChannelId ?? '');
+  Widget _buildChatArea(
+    BuildContext context,
+    AppProvider appProvider,
+    ChatProvider chatProvider,
+    Channel currentChannel,
+  ) {
+    final macosTheme = MacosTheme.of(context);
+    final background = macosTheme.brightness == Brightness.dark
+        ? const LinearGradient(colors: [
+            Color.fromRGBO(37, 37, 37, 1),
+            Color.fromRGBO(67, 67, 67, 1),
+          ])
+        : const LinearGradient(colors: [
+            Color.fromRGBO(240, 240, 240, 1),
+            Color.fromRGBO(255, 255, 255, 1),
+          ]);
+    final borderColor = macosTheme.dividerColor;
     final messages = chatProvider.currentChannelMessages;
 
-    return Column(
-      children: [
-        // Chat header
-        _buildChatHeader(context, appProvider, chatProvider, currentChannel),
-        
-        // Messages area
-        Expanded(
-          child: messages.isEmpty 
-              ? _buildEmptyState(context)
-              : _buildMessagesList(context, messages, appProvider, chatProvider),
-        ),
-        
-        // Input area
-        if (currentChannel != null)
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: background,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: borderColor),
+      ),
+      child: Column(
+        children: [
+          _buildChatHeader(
+            context,
+            appProvider,
+            chatProvider,
+            currentChannel,
+          ),
+          Container(
+            height: 1,
+            color: borderColor.withValues(alpha: 0.6),
+          ),
+          Expanded(
+            child: messages.isEmpty
+                ? _buildEmptyState(context)
+                : _buildMessagesList(
+                    context,
+                    messages,
+                    appProvider,
+                    chatProvider,
+                  ),
+          ),
+          Container(
+            height: 1,
+            color: borderColor.withValues(alpha: 0.6),
+          ),
           _buildChatInput(context, chatProvider, currentChannel),
-      ],
+        ],
+      ),
     );
   }
 
-  Widget _buildChatHeader(BuildContext context, AppProvider appProvider, ChatProvider chatProvider, Channel? currentChannel) {
-    final theme = Theme.of(context);
-    
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(
-            color: Colors.white.withOpacity(0.1),
-          ),
-        ),
-        gradient: LinearGradient(
-          colors: [
-            Colors.white.withOpacity(0.1),
-            Colors.transparent,
-          ],
-        ),
-      ),
+  Widget _buildChatHeader(
+    BuildContext context,
+    AppProvider appProvider,
+    ChatProvider chatProvider,
+    Channel currentChannel,
+  ) {
+    final typography = MacosTheme.of(context).typography;
+    final channelIcon = currentChannel.type == ChannelType.userOnly
+        ? CupertinoIcons.person_badge_plus
+        : CupertinoIcons.bubble_left_bubble_right_fill;
+    final isAutoChannel =
+        currentChannel.type == ChannelType.minionMinionAuto;
+    final description = currentChannel.description;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       child: Row(
         children: [
-          // App icon and title
-          Container(
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF3B82F6), Color(0xFF10B981)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: theme.colorScheme.primary.withOpacity(0.3),
-                  blurRadius: 12,
-                  spreadRadius: 2,
-                ),
-              ],
-            ),
-            child: const Icon(
-              Icons.military_tech,
-              color: Colors.white,
-              size: 28,
-            ),
-          ).animate()
-            .rotate(
-              begin: 0,
-              end: 0.05,
-              duration: const Duration(milliseconds: 2000),
-              curve: Curves.easeInOut,
-            )
-            .then()
-            .rotate(
-              begin: 0.05,
-              end: -0.05,
-              duration: const Duration(milliseconds: 4000),
-              curve: Curves.easeInOut,
-            )
-            .then()
-            .rotate(
-              begin: -0.05,
-              end: 0,
-              duration: const Duration(milliseconds: 2000),
-              curve: Curves.easeInOut,
-            ),
-          
-          const SizedBox(width: 20),
-          
+          MacosIcon(
+            channelIcon,
+            size: 24,
+            color: MacosTheme.of(context).primaryColor,
+          ),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'LLM Legion Command Center',
-                  style: theme.textTheme.headlineMedium?.copyWith(
-                    fontWeight: FontWeight.w300,
-                    color: theme.colorScheme.onSurface.withOpacity(0.9),
+                  currentChannel.name,
+                  style: typography.title2.copyWith(fontWeight: FontWeight.w600),
+                ),
+                if (description.isNotEmpty)
+                  Text(
+                    description,
+                    style: typography.caption1,
                   ),
-                ),
-                
-                const SizedBox(height: 4),
-                
-                Row(
-                  children: [
-                    Text(
-                      'Flutter Edition',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.primary,
-                      ),
-                    ),
-                    
-                    const SizedBox(width: 8),
-                    
-                    Container(
-                      width: 4,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.primary.withOpacity(0.6),
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    
-                    const SizedBox(width: 8),
-                    
-                    Text(
-                      'Commander: ${LegionApiService.legionCommanderName}',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.onSurface.withOpacity(0.7),
-                      ),
-                    ),
-                  ],
-                ),
               ],
             ),
           ),
-          
-          // Controls
-          Row(
-            children: [
-              // Channel-specific quick controls
-              if (currentChannel != null && currentChannel.type == ChannelType.minionMinionAuto)
-                Row(
-                  children: [
-                    Text(
-                      'Auto',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: Colors.white.withOpacity(0.9),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Switch(
-                      value: currentChannel.isAutoModeActive,
-                      onChanged: (v) async {
-                        final updated = currentChannel.copyWith(isAutoModeActive: v);
-                        await _legionService.updateChannel(updated);
-                        appProvider.updateChannel(updated);
-                        _rescheduleAutoChat();
-                      },
-                    ),
-                    const SizedBox(width: 12),
-                  ],
-                ),
-              VistaTooltip(
-                message: chatProvider.isAutoScrollEnabled 
-                    ? 'Auto-scroll enabled'
-                    : 'Auto-scroll disabled',
-                child: VistaButton(
-                  onPressed: () => chatProvider.setAutoScrollEnabled(!chatProvider.isAutoScrollEnabled),
-                  padding: const EdgeInsets.all(12),
-                  child: Icon(
-                    chatProvider.isAutoScrollEnabled 
-                        ? Icons.keyboard_double_arrow_down
-                        : Icons.keyboard_arrow_up,
-                    color: Colors.white.withOpacity(0.9),
-                  ),
-                ),
-              ),
-              
-              const SizedBox(width: 8),
-
-              VistaTooltip(
-                message: 'Minions',
-                child: VistaButton(
-                  onPressed: () => MinionConfigPanel.show(context),
-                  padding: const EdgeInsets.all(12),
-                  child: Icon(
-                    Icons.groups,
-                    color: Colors.white.withOpacity(0.9),
-                  ),
-                ),
-              ),
-
-              const SizedBox(width: 8),
-              
-              VistaTooltip(
-                message: 'MCP Server Manager',
-                child: VistaButton(
-                  onPressed: () {
-                    // TODO: Open MCP manager
-                  },
-                  padding: const EdgeInsets.all(12),
-                  child: Icon(
-                    Icons.settings,
-                    color: Colors.white.withOpacity(0.9),
-                  ),
-                ),
-              ),
-            ],
+          if (isAutoChannel) ...[
+            Text('Auto', style: typography.caption1),
+            const SizedBox(width: 6),
+            MacosSwitch(
+              value: currentChannel.isAutoModeActive,
+              onChanged: (value) async {
+                final updated = currentChannel.copyWith(isAutoModeActive: value);
+                await _legionService.updateChannel(updated);
+                appProvider.updateChannel(updated);
+                _rescheduleAutoChat();
+              },
+            ),
+            const SizedBox(width: 12),
+          ],
+          PushButton(
+            controlSize: ControlSize.regular,
+            secondary: true,
+            onPressed: () async {
+              final edited =
+                  await ChannelFormDialog.show(context, initial: currentChannel);
+              if (edited != null) {
+                _selectChannel(edited.id);
+              }
+            },
+            child: const Text('Edit'),
+          ),
+          const SizedBox(width: 8),
+          PushButton(
+            controlSize: ControlSize.regular,
+            onPressed: () => chatProvider.setAutoScrollEnabled(
+              !chatProvider.isAutoScrollEnabled,
+            ),
+            child: Text(
+              chatProvider.isAutoScrollEnabled
+                  ? 'Auto-scroll On'
+                  : 'Auto-scroll Off',
+            ),
           ),
         ],
       ),
@@ -629,82 +616,63 @@ class _EnhancedMainScreenState extends State<EnhancedMainScreen>
   }
 
   Widget _buildEmptyState(BuildContext context) {
-    final theme = Theme.of(context);
-    
+    final typography = MacosTheme.of(context).typography;
+    final accent =
+        MacosTheme.of(context).primaryColor.withValues(alpha: 0.25);
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Container(
-            width: 120,
-            height: 120,
+          DecoratedBox(
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  theme.colorScheme.primary.withOpacity(0.2),
-                  theme.colorScheme.secondary.withOpacity(0.2),
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(60),
+              color: accent,
+              shape: BoxShape.circle,
             ),
-            child: Icon(
-              Icons.chat_bubble_outline,
-              size: 64,
-              color: theme.colorScheme.primary.withOpacity(0.6),
+            child: const Padding(
+              padding: EdgeInsets.all(32),
+              child: MacosIcon(
+                CupertinoIcons.chat_bubble_2,
+                size: 48,
+              ),
             ),
           ),
-          
-          const SizedBox(height: 32),
-          
+          const SizedBox(height: 24),
           Text(
             'No messages yet',
-            style: theme.textTheme.headlineMedium?.copyWith(
-              color: theme.colorScheme.onSurface.withOpacity(0.7),
-              fontWeight: FontWeight.w300,
-            ),
+            style: typography.title1.copyWith(fontWeight: FontWeight.w500),
           ),
-          
-          const SizedBox(height: 12),
-          
+          const SizedBox(height: 8),
           Text(
-            'Send a message to start commanding your legion',
-            style: theme.textTheme.bodyLarge?.copyWith(
-              color: theme.colorScheme.onSurface.withOpacity(0.5),
-            ),
+            'Send a message to start commanding your legion.',
+            style: typography.subheadline,
             textAlign: TextAlign.center,
           ),
         ],
       ),
-    ).animate()
-      .fadeIn(
-        duration: const Duration(milliseconds: 800),
-        curve: SpringConfig.gentle,
-      )
-      .moveY(
-        begin: 40,
-        duration: const Duration(milliseconds: 800),
-        curve: SpringConfig.gentle,
-      );
+    );
   }
 
-  Widget _buildMessagesList(BuildContext context, List<ChatMessage> messages, AppProvider appProvider, ChatProvider chatProvider) {
-    return VistaScrollbar(
+  Widget _buildMessagesList(
+    BuildContext context,
+    List<ChatMessage> messages,
+    AppProvider appProvider,
+    ChatProvider chatProvider,
+  ) {
+    return MacosScrollbar(
       controller: _scrollController,
       child: ListView.builder(
         controller: _scrollController,
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         itemCount: messages.length,
         itemBuilder: (context, index) {
           final message = messages[index];
           final minionConfig = appProvider.getMinionConfig(message.senderName);
-          
+
           return EnhancedChatMessage(
             message: message,
             minionConfig: minionConfig,
             isProcessing: chatProvider.activeMinionProcessors.containsKey(message.senderName) &&
-                         chatProvider.activeMinionProcessors[message.senderName]!,
+                chatProvider.activeMinionProcessors[message.senderName]!,
             isSelectionMode: chatProvider.isSelectionMode,
             isSelected: chatProvider.selectedMessageIds.contains(message.id),
             isBulkDiaryVisible: chatProvider.bulkDiaryVisible.contains(message.id),
@@ -721,89 +689,68 @@ class _EnhancedMainScreenState extends State<EnhancedMainScreen>
             },
           ).animate()
             .fadeIn(
-              duration: const Duration(milliseconds: 400),
-              delay: Duration(milliseconds: index * 50),
-              curve: SpringConfig.gentle,
+              duration: const Duration(milliseconds: 300),
+              delay: Duration(milliseconds: (index % 6) * 40),
             )
-            .moveY(
-              begin: 20,
-              duration: const Duration(milliseconds: 400),
-              delay: Duration(milliseconds: index * 50),
-              curve: SpringConfig.gentle,
-          );
+            .slide(
+              begin: const Offset(0, 0.03),
+              duration: const Duration(milliseconds: 300),
+              delay: Duration(milliseconds: (index % 6) * 40),
+            );
         },
       ),
     );
   }
 
-  Widget _buildChatInput(BuildContext context, ChatProvider chatProvider, Channel currentChannel) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        border: Border(
-          top: BorderSide(
-            color: Colors.white.withOpacity(0.1),
-          ),
-        ),
-      ),
+  Widget _buildChatInput(
+    BuildContext context,
+    ChatProvider chatProvider,
+    Channel currentChannel,
+  ) {
+    final disabled = currentChannel.type == ChannelType.minionMinionAuto &&
+        currentChannel.isAutoModeActive;
+    final isComposing = _inputController.text.trim().isNotEmpty;
+    final sendEnabled = isComposing && !chatProvider.isProcessingMessage && !disabled;
+    final placeholder = disabled
+        ? 'Auto-mode active. Input disabled.'
+        : 'Message your legion…';
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
       child: Row(
         children: [
           Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(28),
-                border: Border.all(
-                  color: Colors.white.withOpacity(0.2),
-                ),
+            child: MacosTextField(
+              controller: _inputController,
+              focusNode: _inputFocusNode,
+              placeholder: placeholder,
+              enabled: !disabled,
+              maxLines: 6,
+              minLines: 1,
+              decoration: kDefaultRoundedBorderDecoration.copyWith(
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: MacosTheme.of(context).dividerColor, width: 1),
+                color: MacosTheme.of(context).canvasColor,
               ),
-              child: Row(
-                children: [
-                  const SizedBox(width: 16),
-                  
-                  Expanded(
-                    child: TextField(
-                      controller: _inputController,
-                      enabled: !(currentChannel.type == ChannelType.minionMinionAuto && 
-                               currentChannel.isAutoModeActive),
-                      maxLines: null,
-                      textCapitalization: TextCapitalization.sentences,
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.9),
-                        fontSize: 16,
-                      ),
-                      decoration: InputDecoration(
-                        hintText: (currentChannel.type == ChannelType.minionMinionAuto && 
-                                  currentChannel.isAutoModeActive)
-                            ? 'Auto-mode active. Input disabled.'
-                            : 'Message your legion...',
-                        hintStyle: TextStyle(
-                          color: Colors.white.withOpacity(0.5),
-                        ),
-                        border: InputBorder.none,
-                        contentPadding: const EdgeInsets.symmetric(vertical: 16),
-                      ),
-                      cursorColor: const Color(0xFFF59E0B), // Amber cursor
-                      onSubmitted: _sendMessage,
-                    ),
-                  ),
-                  
-                  const SizedBox(width: 12),
-                ],
+              focusedDecoration: kDefaultRoundedBorderDecoration.copyWith(
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: MacosTheme.of(context).primaryColor, width: 1),
+                color: MacosTheme.of(context).canvasColor,
               ),
+              cursorWidth: 1,
+              autocorrect: true,
+              autofocus: true,
+              enableSuggestions: true,
+              textInputAction: TextInputAction.send,
+              textCapitalization: TextCapitalization.sentences,
+              onSubmitted: (_) => _attemptSend(currentChannel),
             ),
           ),
-          
           const SizedBox(width: 12),
-          
-          AnimatedSendButton(
-            onPressed: () => _sendMessage(_inputController.text),
-            isSending: chatProvider.isProcessingMessage,
-            isEnabled: _inputController.text.trim().isNotEmpty &&
-                      !(currentChannel.type == ChannelType.minionMinionAuto && 
-                        currentChannel.isAutoModeActive),
-            size: 56,
-          ),
+          if (chatProvider.isProcessingMessage) ...[
+            const ProgressCircle(radius: 9),
+            const SizedBox(width: 12),
+          ],
         ],
       ),
     );

@@ -3,6 +3,7 @@
 /// 
 /// This is the Flutter equivalent of the React animations/config.ts
 /// Provides physics-based animation configurations for consistent UX
+library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';

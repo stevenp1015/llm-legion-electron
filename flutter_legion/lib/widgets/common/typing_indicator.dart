@@ -2,6 +2,7 @@
 /// Shows when minions are processing but haven't started streaming yet
 /// 
 /// Replicates the React TypingIndicator.tsx with Flutter animations
+library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
