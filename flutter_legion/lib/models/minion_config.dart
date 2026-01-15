@@ -2,7 +2,7 @@ import 'package:json_annotation/json_annotation.dart';
 
 part 'minion_config.g.dart';
 
-@JsonSerializable()
+@JsonSerializable(explicitToJson: true)
 class UsageStats {
   final int totalTokens;
   final int totalCost;
@@ -22,7 +22,7 @@ class UsageStats {
   Map<String, dynamic> toJson() => _$UsageStatsToJson(this);
 }
 
-@JsonSerializable()
+@JsonSerializable(explicitToJson: true)
 class MinionConfig {
   final String id;
   final String name;

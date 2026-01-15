@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { RegulatorReport } from '../types';
 import MinionIcon from './MinionIcon';
 
@@ -19,7 +19,7 @@ const sentimentStyles: Record<RegulatorReport['overall_sentiment'], { color: str
 };
 
 
-const RegulatorReportCard: React.FC<{ report: RegulatorReport, minionName: string }> = ({ report, minionName }) => {
+const RegulatorReportCard: React.FC<{ report: RegulatorReport, minionName: string }> = memo(({ report, minionName }) => {
     const sentiment = sentimentStyles[report.overall_sentiment] || sentimentStyles.neutral;
 
     return (
@@ -80,6 +80,8 @@ const RegulatorReportCard: React.FC<{ report: RegulatorReport, minionName: strin
             </div>
         </div>
     );
-};
+});
+
+RegulatorReportCard.displayName = 'RegulatorReportCard';
 
 export default RegulatorReportCard;

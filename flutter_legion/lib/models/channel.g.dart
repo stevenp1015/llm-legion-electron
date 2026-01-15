@@ -43,7 +43,7 @@ Map<String, dynamic> _$ChannelToJson(Channel instance) => <String, dynamic>{
       'isAutoModeActive': instance.isAutoModeActive,
       'autoModeDelayType': instance.autoModeDelayType,
       'autoModeFixedDelay': instance.autoModeFixedDelay,
-      'autoModeRandomDelay': instance.autoModeRandomDelay?.toJson(),
+      'autoModeRandomDelay': instance.autoModeRandomDelay,
     };
 
 const _$ChannelTypeEnumMap = {
@@ -51,4 +51,5 @@ const _$ChannelTypeEnumMap = {
   ChannelType.userMinionGroup: 'user_minion_group',
   ChannelType.minionMinionAuto: 'minion_minion_auto',
   ChannelType.userOnly: 'user_only',
+  ChannelType.minionBuddyChat: 'minion_buddy_chat',
 };

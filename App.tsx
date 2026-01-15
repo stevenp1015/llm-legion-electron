@@ -513,7 +513,7 @@ const App: React.FC = () => {
 
   return (
     <div className="h-screen w-screen flex flex-col bg-gradient-to-tl from-zinc-100 to-zinc-50 overflow-hidden text-neutral-600 selection:bg-amber-300 selection:text-neutral-900">
-      <header className="p-3 bg-zinc-100/100 border-b border-zinc-200 shadow-sm flex items-center justify-between flex-shrink-0 z-20 electron-drag">
+      <header className="p-3 bg-gradient-to-b from-white to-zinc-100 to-90% border-b border-zinc-200 shadow-md shadow-zinc-500/20 flex items-center justify-between flex-shrink-0 z-20 electron-drag">
         <div className="flex ml-20 items-center gap-3 select-none">
           <img src="https://picsum.photos/seed/legionicon/40/40" alt="Legion Icon" className="w-10 h-10 rounded-full ring-2 ring-amber-500" />
           <div>
@@ -573,7 +573,7 @@ const App: React.FC = () => {
           minionConfigs={minionConfigs}
         />
         
-        <main className="flex-1 flex flex-col overflow-hidden">
+        <main className="flex-1 bg-gradient-to-b from-zinc-100 to-zinc-200 flex flex-col overflow-hidden">
           {currentChannel ? (
             <>
               <div className="p-3 border-b border-zinc-200 bg-zinc-50/60 opacity-60 flex justify-between items-center">

@@ -1,7 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, memo, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import { Streamdown } from 'streamdown';
 import { ChatMessageData, MessageSender, RegulatorReport, MinionConfig, ToolCall } from '../types';
 import { LEGION_COMMANDER_NAME } from '../constants';
 import { TrashIcon, PencilIcon, BookOpenIcon, UserCircleIcon, SaveIcon, XMarkIcon, ExclamationTriangleIcon, TerminalIcon } from './Icons';
@@ -11,8 +10,9 @@ import { parseJsonFromMarkdown } from '../services/geminiService';
 import MinionIcon from './MinionIcon';
 import StreamingText from './StreamingText';
 import { getAnimationConfig, ANIMATION_VARIANTS } from '../animations/config';
+import { hexToRgb, formatTimestamp } from '../utils/colorUtils';
 
-const DiaryCard: React.FC<{ diary: any }> = ({ diary }) => {
+const DiaryCard: React.FC<{ diary: any }> = memo(({ diary }) => {
   const renderOpinionUpdates = () => (
     <ul className="list-none pl-0 space-y-1">
       {diary.opinionUpdates.map((update: any, index: number) => (
@@ -59,21 +59,13 @@ const DiaryCard: React.FC<{ diary: any }> = ({ diary }) => {
       </div>
     </div>
   );
-};
+});
 
-const ToolCallBubble: React.FC<{ toolCall: ToolCall, minionName: string, minionConfig?: MinionConfig }> = ({ toolCall, minionName, minionConfig }) => {
+DiaryCard.displayName = 'DiaryCard';
+
+const ToolCallBubble: React.FC<{ toolCall: ToolCall, minionName: string, minionConfig?: MinionConfig }> = memo(({ toolCall, minionName, minionConfig }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isShimmering, setIsShimmering] = useState(false);
-  
-  // Convert hex color to RGB values for gradients
-  const hexToRgb = (hex: string) => {
-    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-    return result ? {
-      r: parseInt(result[1], 16),
-      g: parseInt(result[2], 16),
-      b: parseInt(result[3], 16)
-    } : { r: 59, g: 130, b: 246 }; // fallback to blue
-  };
   
   const handleClick = () => {
     setIsExpanded(!isExpanded);
@@ -81,12 +73,15 @@ const ToolCallBubble: React.FC<{ toolCall: ToolCall, minionName: string, minionC
     setTimeout(() => setIsShimmering(false), 300);
   };
   
-  // Get minion's color or fallback to blue
-  const minionColor = minionConfig?.chatColor || '#3B82F6';
-  const rgb = hexToRgb(minionColor);
-  
-  // Create lighter version for background (15% opacity)
-  const lightBgColor = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.02)`;
+  // Memoize RGB calculations to prevent recalculation on every render
+  const { rgb, lightBgColor } = useMemo(() => {
+    const minionColor = minionConfig?.chatColor || '#3B82F6';
+    const rgbResult = hexToRgb(minionColor) || { r: 59, g: 130, b: 246 };
+    return {
+      rgb: rgbResult,
+      lightBgColor: `rgba(${rgbResult.r}, ${rgbResult.g}, ${rgbResult.b}, 0.02)`
+    };
+  }, [minionConfig?.chatColor]);
   
   return (
     <div className="mt-1 max-w-full">
@@ -155,21 +150,13 @@ const ToolCallBubble: React.FC<{ toolCall: ToolCall, minionName: string, minionC
       </AnimatePresence>
     </div>
   );
-};
+});
 
-const ToolOutputBubble: React.FC<{ toolOutput: string, toolName: string, minionConfig?: MinionConfig }> = ({ toolOutput, toolName, minionConfig }) => {
+ToolCallBubble.displayName = 'ToolCallBubble';
+
+const ToolOutputBubble: React.FC<{ toolOutput: string, toolName: string, minionConfig?: MinionConfig }> = memo(({ toolOutput, toolName, minionConfig }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isShimmering, setIsShimmering] = useState(false);
-  
-  // Convert hex color to RGB values for gradients
-  const hexToRgb = (hex: string) => {
-    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-    return result ? {
-      r: parseInt(result[1], 16),
-      g: parseInt(result[2], 16),
-      b: parseInt(result[3], 16)
-    } : { r: 16, g: 185, b: 129 }; // fallback to green
-  };
   
   const handleClick = () => {
     setIsExpanded(!isExpanded);
@@ -177,21 +164,25 @@ const ToolOutputBubble: React.FC<{ toolOutput: string, toolName: string, minionC
     setTimeout(() => setIsShimmering(false), 300);
   };
   
-  // Get minion's color or fallback to green, make it darker for "completion" feel
-  const minionColor = minionConfig?.chatColor || '#10B981';
-  const rgb = hexToRgb(minionColor);
-  // Make it darker by reducing RGB values by 20%
-  const darkerRgb = {
-    r: Math.round(rgb.r * 0.9),
-    g: Math.round(rgb.g * 0.9),
-    b: Math.round(rgb.b * 0.9)
-  };
+  // Memoize RGB calculations to prevent recalculation on every render
+  const { darkerRgb } = useMemo(() => {
+    const minionColor = minionConfig?.chatColor || '#10B981';
+    const rgbResult = hexToRgb(minionColor) || { r: 16, g: 185, b: 129 };
+    // Make it darker by reducing RGB values by 10%
+    return {
+      darkerRgb: {
+        r: Math.round(rgbResult.r * 0.9),
+        g: Math.round(rgbResult.g * 0.9),
+        b: Math.round(rgbResult.b * 0.9)
+      }
+    };
+  }, [minionConfig?.chatColor]);
   
   return (
     <div className="mt-1 relative">
       <button 
         onClick={handleClick} 
-        className="w-full p-2.5 rounded-lg tool-output-bubble  relative overflow-hidden cursor-pointer group"
+        className="w-full p-2.5 rounded-lg tool-output-bubble relative overflow-hidden cursor-pointer group"
       >
         <div className="flex items-center gap-2 text-sm text-zinc-600">
           <span className="font-semibold">[TOOL OUTPUT]</span>
@@ -239,7 +230,7 @@ const ToolOutputBubble: React.FC<{ toolOutput: string, toolName: string, minionC
           >
             <div className="p-3 bg-zinc-100 border border-zinc-300 rounded-lg">
               <div className="prose prose-sm max-w-none break-words">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{toolOutput}</ReactMarkdown>
+                <Streamdown>{toolOutput}</Streamdown>
               </div>
             </div>
           </motion.div>
@@ -247,7 +238,9 @@ const ToolOutputBubble: React.FC<{ toolOutput: string, toolName: string, minionC
       </AnimatePresence>
     </div>
   );
-};
+});
+
+ToolOutputBubble.displayName = 'ToolOutputBubble';
 
 
 import { ChannelType } from '../types';
@@ -286,6 +279,19 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
   const [showDiary, setShowDiary] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  const isUser = message.senderType === MessageSender.User;
+  const isMinion = message.senderType === MessageSender.AI;
+  const isSystem = message.senderType === MessageSender.System;
+  const isTool = message.senderType === MessageSender.Tool;
+  const isRegulator = isMinion && message.senderRole === 'regulator';
+
+  // Memoize regulator report parsing to prevent re-parsing on every render
+  // MUST be called before any conditional returns to satisfy Rules of Hooks
+  const regulatorReport = useMemo(() => 
+    isRegulator ? parseJsonFromMarkdown<RegulatorReport>(message.content) : null,
+    [isRegulator, message.content]
+  );
+
   // Use bulk diary state when in selection mode, individual state otherwise
   const isDiaryVisible = isSelectionMode ? isBulkDiaryVisible : showDiary;
 
@@ -317,12 +323,6 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
       setIsEditing(true);
     }
   };
-
-  const isUser = message.senderType === MessageSender.User;
-  const isMinion = message.senderType === MessageSender.AI;
-  const isSystem = message.senderType === MessageSender.System;
-  const isTool = message.senderType === MessageSender.Tool;
-  const isRegulator = isMinion && message.senderRole === 'regulator';
 
   const bubbleStyle: React.CSSProperties = {};
   const nameStyle: React.CSSProperties = {};
@@ -403,10 +403,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
     }
   };
 
-  const formatTimestamp = (timestamp: number) => {
-    return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  };
-  
+
   if (isSystem) {
     const style = message.isError 
       ? "px-4 py-2 text-center text-sm text-red-600 bg-red-100 rounded-md" 
@@ -562,8 +559,6 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
       </motion.div>
     );
   }
-
-  const regulatorReport = isRegulator ? parseJsonFromMarkdown<RegulatorReport>(message.content) : null;
 
   return (
     <motion.div

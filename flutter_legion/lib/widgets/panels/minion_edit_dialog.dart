@@ -180,13 +180,29 @@ class _MinionEditDialogState extends State<MinionEditDialog> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               DropdownButtonFormField<String>(
-                                value: _useCustomModel
-                                    ? 'custom-model-entry'
-                                    : (_model.isNotEmpty
-                                        ? _model
-                                        : (_models.isNotEmpty
-                                            ? _models.first.id
-                                            : '')),
+                                value: () {
+                                  // If explicitly using custom model, use that
+                                  if (_useCustomModel) return 'custom-model-entry';
+                                  // If _model is set and exists in the list, use it
+                                  if (_model.isNotEmpty && _models.any((m) => m.id == _model)) {
+                                    return _model;
+                                  }
+                                  // If _model is set but NOT in list, treat as custom
+                                  if (_model.isNotEmpty) {
+                                    // Auto-switch to custom model mode
+                                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                                      if (mounted && !_useCustomModel) {
+                                        setState(() {
+                                          _useCustomModel = true;
+                                          _customModelId = _model;
+                                        });
+                                      }
+                                    });
+                                    return 'custom-model-entry';
+                                  }
+                                  // Fallback to first model if available
+                                  return _models.isNotEmpty ? _models.first.id : 'custom-model-entry';
+                                }(),
                                 items: [
                                   ..._models.map((m) => DropdownMenuItem(
                                         value: m.id,
@@ -243,9 +259,13 @@ class _MinionEditDialogState extends State<MinionEditDialog> {
                         const SizedBox(width: 12),
                         Expanded(
                           child: DropdownButtonFormField<String>(
-                            value: _apiKeyId.isNotEmpty
-                                ? _apiKeyId
-                                : _apiKeys.first.id,
+                            value: () {
+                              // Ensure value exists in items
+                              if (_apiKeyId.isNotEmpty && _apiKeys.any((k) => k.id == _apiKeyId)) {
+                                return _apiKeyId;
+                              }
+                              return _apiKeys.isNotEmpty ? _apiKeys.first.id : null;
+                            }(),
                             items: _apiKeys
                                 .map((k) => DropdownMenuItem(
                                       value: k.id,
@@ -358,6 +378,7 @@ class _MinionEditDialogState extends State<MinionEditDialog> {
                         Expanded(
                           child: DropdownButtonFormField<String>(
                             value: _selectedPresetId,
+                            hint: const Text('Select a preset...'),
                             items: _presets
                                 .map((p) => DropdownMenuItem(
                                     value: p.id,
@@ -365,11 +386,13 @@ class _MinionEditDialogState extends State<MinionEditDialog> {
                                 .toList(),
                             onChanged: (v) => setState(() {
                               _selectedPresetId = v;
-                              final p = _presets.firstWhere((e) => e.id == v,
-                                  orElse: () => PromptPreset(
-                                      id: '', name: '', content: ''));
-                              if (p.id.isNotEmpty) {
-                                _systemPrompt.text = p.content;
+                              if (v != null) {
+                                final p = _presets.firstWhere((e) => e.id == v,
+                                    orElse: () => PromptPreset(
+                                        id: '', name: '', content: ''));
+                                if (p.id.isNotEmpty) {
+                                  _systemPrompt.text = p.content;
+                                }
                               }
                             }),
                             decoration: const InputDecoration(

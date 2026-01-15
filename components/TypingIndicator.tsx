@@ -1,8 +1,12 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { motion } from 'motion/react';
-import { getAnimationConfig } from '../animations/config';
 
-const TypingIndicator: React.FC = () => {
+/**
+ * TypingIndicator - Shows animated dots while a minion is processing
+ * Uses Framer Motion for smooth, performant animations
+ * Memoized since it receives no props and never needs to re-render
+ */
+const TypingIndicator: React.FC = memo(() => {
     return (
         <div className="flex items-center justify-center space-x-1.5 p-2">
             {[0, 1, 2].map((index) => (
@@ -42,6 +46,8 @@ const TypingIndicator: React.FC = () => {
             />
         </div>
     );
-};
+});
+
+TypingIndicator.displayName = 'TypingIndicator';
 
 export default TypingIndicator;

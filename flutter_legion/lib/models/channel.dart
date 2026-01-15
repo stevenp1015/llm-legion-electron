@@ -11,6 +11,8 @@ enum ChannelType {
   minionMinionAuto,
   @JsonValue('user_only')
   userOnly,
+  @JsonValue('minion_buddy_chat')
+  minionBuddyChat,
 }
 
 @JsonSerializable()

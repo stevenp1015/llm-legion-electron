@@ -32,8 +32,8 @@ MinionConfig _$MinionConfigFromJson(Map<String, dynamic> json) => MinionConfig(
       apiKeyId: json['apiKeyId'] as String,
       chatColor: json['chatColor'] as String?,
       fontColor: json['fontColor'] as String?,
-      temperature: (json['temperature'] as num?)?.toDouble() ?? 0.7,
-      maxTokens: (json['maxTokens'] as num?)?.toInt() ?? 2000,
+      temperature: (json['temperature'] as num?)?.toDouble() ?? 1.0,
+      maxTokens: (json['maxTokens'] as num?)?.toInt() ?? 32768,
       enabled: json['enabled'] as bool? ?? true,
       usageStats: json['usageStats'] == null
           ? null

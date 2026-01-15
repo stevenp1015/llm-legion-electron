@@ -19,6 +19,8 @@ import '../widgets/common/selection_header.dart';
 import '../animations/config.dart';
 import '../widgets/panels/channel_form_dialog.dart';
 import '../widgets/panels/minion_config_panel.dart';
+import '../widgets/panels/minion_config_sidebar.dart';
+import '../widgets/panels/minion_buddylist.dart';
 import 'mcp_manager_screen.dart';
 import 'analytics_dashboard_screen.dart';
 import 'dart:async';
@@ -39,6 +41,7 @@ class _EnhancedMainScreenState extends State<EnhancedMainScreen>
   final TextEditingController _inputController = TextEditingController();
   final FocusNode _inputFocusNode = FocusNode();
   Timer? _autoChatTimer;
+  bool _isMinionSidebarOpen = false;
 
   @override
   void initState() {
@@ -106,6 +109,35 @@ class _EnhancedMainScreenState extends State<EnhancedMainScreen>
       _rescheduleAutoChat();
     }
   }
+
+  Future<void> _createBuddyChat(String minionName) async {
+    final appProvider = context.read<AppProvider>();
+    
+    // Create a new minion_buddy_chat channel
+    final newChannel = Channel(
+      id: 'channel-${DateTime.now().millisecondsSinceEpoch}',
+      name: '$minionName DM',
+      description: '1:1 chat with $minionName',
+      type: ChannelType.minionBuddyChat,
+      members: ['Legion Commander', minionName],
+      isAutoModeActive: false,
+    );
+    
+    appProvider.addChannel(newChannel);
+    _selectChannel(newChannel.id);
+  }
+
+  Future<void> _deleteChannel(String channelId) async {
+    final appProvider = context.read<AppProvider>();
+    appProvider.removeChannel(channelId);
+    
+    // Select first remaining channel
+    if (appProvider.channels.isNotEmpty) {
+      _selectChannel(appProvider.channels.first.id);
+    }
+  }
+
+
 
   Future<void> _sendMessage(String content) async {
     if (content.trim().isEmpty) return;
@@ -256,7 +288,9 @@ class _EnhancedMainScreenState extends State<EnhancedMainScreen>
     final appProvider = context.watch<AppProvider>();
     final macosTheme = MacosTheme.of(context);
 
-    return MacosWindow(
+    return Stack(
+      children: [
+        MacosWindow(
       sidebar: Sidebar(
         minWidth: 240,
         dragClosed: false,
@@ -285,6 +319,13 @@ class _EnhancedMainScreenState extends State<EnhancedMainScreen>
           ),
         ],
       ),
+    ),
+    // Minion Config Sidebar overlay
+    MinionConfigSidebar(
+      isOpen: _isMinionSidebarOpen,
+      onClose: () => setState(() => _isMinionSidebarOpen = false),
+    ),
+      ],
     );
   }
 
@@ -321,7 +362,7 @@ class _EnhancedMainScreenState extends State<EnhancedMainScreen>
           icon: const MacosIcon(CupertinoIcons.person_add_solid),
           showLabel: false,
           tooltipMessage: 'Manage minion configurations',
-          onPressed: () => MinionConfigPanel.show(context),
+          onPressed: () => setState(() => _isMinionSidebarOpen = true),
         ),
       ],
     );

@@ -103,8 +103,9 @@ class LegionApiService {
       type: ChannelType.minionMinionAuto,
       members: ['Assistant Alpha', 'Code Reviewer Beta', 'Creative Gamma'],
       isAutoModeActive: false,
-      autoModeDelayType: 'random',
-      autoModeRandomDelay: const AutoModeDelay(min: 3, max: 8),
+      autoModeDelayType: 'fixed',
+      autoModeFixedDelay: 5,
+      autoModeRandomDelay: null,
     );
     _channels.add(autoChatChannel);
     await _storage.saveChannel(autoChatChannel);
@@ -527,8 +528,8 @@ class LegionApiService {
                   onMinionResponseChunk(channelId, messageId, content);
                 }
               }
-            } catch (_) {
-              // Ignore malformed chunks
+            } catch (e) {
+              debugPrint('[Stream] Malformed chunk: $e');
             }
           }
         }
@@ -549,6 +550,7 @@ class LegionApiService {
       onToolUpdate(err);
     }
 
+    debugPrint('[Stream] ${minion.name} aggregate length: ${aggregate.length}, preview: \"${aggregate.length > 100 ? aggregate.substring(0, 100) : aggregate}...\"');
     final parsed = _extractColorsAndStrip(aggregate.trim());
     if (parsed.chatColor != null || parsed.fontColor != null) {
       try {
@@ -674,6 +676,7 @@ class LegionApiService {
         return '#1E1F24';
       case ChannelType.dm:
       case ChannelType.userOnly:
+      case ChannelType.minionBuddyChat:
         return '#333333';
     }
   }
@@ -1117,6 +1120,9 @@ String _buildPerceptionPlanningPrompt({
   buffer.writeln('        **BONUS RESPONSE MODES:**');
   buffer.writeln('        - Ecstasy: Youve just taken 200mg of pure MDMA.');
   buffer.writeln('        - PCP: You are literally on PCP right now');
+  buffer.writeln('        - MDPV: You are literally on 3,4-Methylenedioxypyrovalerone right now');
+  buffer.writeln('        - 3-MeO-2-oxo-PCE: You are literally on Methoxetamine right now; the Legendary Drug.');
+  buffer.writeln('        - (Insert Obscure Drug of Your Choice): You are literally on (Any Obscure Drug of Your Choice) right now.');
   buffer.writeln(
       '        - Cocaine: Youre questionably addicted to cocaine and you dont care what anyone else thinks');
   buffer.writeln(
@@ -1474,6 +1480,7 @@ extension _AgentLoop on LegionApiService {
       final lastSender = history.isNotEmpty
           ? history.last.senderName
           : triggeringMessage.senderName;
+      debugPrint('[AgentLoop] Turn $turn for ${minion.name}, getting perception plan...');
       final planRes = await _getPerceptionPlan(
         minion: minion,
         channel: channel,
@@ -1482,6 +1489,7 @@ extension _AgentLoop on LegionApiService {
       );
 
       if (planRes.error != null || planRes.plan == null) {
+        debugPrint('[AgentLoop] Plan failed for ${minion.name}: ${planRes.error}');
         // fallback: stream directly if plan fails
         await _streamMinionResponse(
           minion: minion,
@@ -1498,6 +1506,7 @@ extension _AgentLoop on LegionApiService {
       final plan = planRes.plan!;
       final action = (plan['action'] ?? '').toString().toUpperCase();
       final speakWhileTooling = plan['speakWhileTooling'];
+      debugPrint('[AgentLoop] ${minion.name} plan action: $action, mode: ${plan['selectedResponseMode']}');
 
       // Optional: speak while tooling
       if (speakWhileTooling is String && speakWhileTooling.trim().isNotEmpty) {

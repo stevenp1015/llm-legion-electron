@@ -34,6 +34,7 @@
     "react-simple-code-editor": "^0.14.1",
     "react-window": "^1.8.11",
     "remark-gfm": "4.0.0",
+    "streamdown": "^2.0.1",
     "tailwindcss": "^4.1.11",
     "zustand": "^5.0.8"
   },
