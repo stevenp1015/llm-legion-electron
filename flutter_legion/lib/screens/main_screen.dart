@@ -436,8 +436,18 @@ class _MainScreenState extends State<MainScreen> {
           isSelected: chatProvider.selectedMessageIds.contains(message.id),
           isBulkDiaryVisible: chatProvider.bulkDiaryVisible.contains(message.id),
           onEnterSelectionMode: () => chatProvider.toggleSelectionMode(),
-          onToggleSelection: (shiftKey) => {
-            // TODO: Implement selection logic
+          onToggleSelection: (shiftKey) {
+            if (shiftKey &&
+                chatProvider.lastSelectedMessageId != null &&
+                chatProvider.lastSelectedMessageId != message.id) {
+              chatProvider.selectMessageRange(
+                chatProvider.lastSelectedMessageId!,
+                message.id,
+                messages,
+              );
+            } else {
+              chatProvider.selectMessage(message.id);
+            }
           },
           onDelete: () async {
             await _legionService.deleteMessage(message.channelId, message.id);

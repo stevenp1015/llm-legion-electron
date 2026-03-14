@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../models/chat_message.dart';
 import '../../models/minion_config.dart';
@@ -35,7 +36,9 @@ class ChatMessageWidget extends StatelessWidget {
 
     return GestureDetector(
       onLongPress: isSelectionMode ? null : onEnterSelectionMode,
-      onTap: isSelectionMode ? () => onToggleSelection?.call(false) : null,
+      onTap: isSelectionMode
+          ? () => onToggleSelection?.call(HardwareKeyboard.instance.isShiftPressed)
+          : null,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         margin: const EdgeInsets.symmetric(vertical: 4),
@@ -141,7 +144,8 @@ class ChatMessageWidget extends StatelessWidget {
         if (isSelectionMode)
           Checkbox(
             value: isSelected,
-            onChanged: (value) => onToggleSelection?.call(false),
+            onChanged: (value) =>
+                onToggleSelection?.call(HardwareKeyboard.instance.isShiftPressed),
           ),
         if (!isSelectionMode && message.senderType == MessageSender.user)
           PopupMenuButton<String>(
