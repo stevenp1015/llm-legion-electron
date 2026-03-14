@@ -21,6 +21,7 @@ import '../widgets/panels/channel_form_dialog.dart';
 import '../widgets/panels/minion_config_panel.dart';
 import '../widgets/panels/minion_config_sidebar.dart';
 import '../widgets/panels/minion_buddylist.dart';
+import '../widgets/common/animated_send_button.dart';
 import 'mcp_manager_screen.dart';
 import 'analytics_dashboard_screen.dart';
 import 'dart:async';
@@ -179,6 +180,59 @@ class _EnhancedMainScreenState extends State<EnhancedMainScreen>
     final text = _inputController.text.trim();
     if (text.isEmpty) return;
     await _sendMessage(text);
+  }
+
+  Future<void> _showMcpToolsMenu() async {
+    final selectedTool = await showMacosAlertDialog<String>(
+      context: context,
+      builder: (context) => MacosAlertDialog(
+        appIcon: const MacosIcon(CupertinoIcons.option),
+        title: const Text('Insert MCP Tool Command'),
+        message: const Text(
+          'Drop a tool invocation into the composer to rapidly scaffold your prompt.',
+        ),
+        primaryButton: PushButton(
+          controlSize: ControlSize.large,
+          onPressed: () => Navigator.of(context).pop('web_search'),
+          child: const Text('Web Search'),
+        ),
+        secondaryButton: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            PushButton(
+              controlSize: ControlSize.large,
+              onPressed: () => Navigator.of(context).pop('file_search'),
+              child: const Text('File Search'),
+            ),
+            const SizedBox(height: 8),
+            PushButton(
+              controlSize: ControlSize.large,
+              onPressed: () => Navigator.of(context).pop('code_analysis'),
+              child: const Text('Code Analysis'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (selectedTool == null) return;
+    _insertMcpToolCommand(selectedTool);
+  }
+
+  void _insertMcpToolCommand(String toolName) {
+    final command = '/mcp $toolName ';
+    final selection = _inputController.selection;
+    final currentText = _inputController.text;
+
+    final start = selection.start >= 0 ? selection.start : currentText.length;
+    final end = selection.end >= 0 ? selection.end : currentText.length;
+
+    final updatedText = currentText.replaceRange(start, end, command);
+    _inputController.value = TextEditingValue(
+      text: updatedText,
+      selection: TextSelection.collapsed(offset: start + command.length),
+    );
+    _inputFocusNode.requestFocus();
   }
 
   void _rescheduleAutoChat() {
@@ -788,6 +842,26 @@ class _EnhancedMainScreenState extends State<EnhancedMainScreen>
             ),
           ),
           const SizedBox(width: 12),
+          Tooltip(
+            message: 'Attach MCP tool command',
+            child: MacosIconButton(
+              icon: const MacosIcon(CupertinoIcons.paperclip),
+              onPressed: disabled ? null : _showMcpToolsMenu,
+              boxConstraints: const BoxConstraints.tightFor(
+                width: 36,
+                height: 36,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          AnimatedSendButton(
+            isSending: chatProvider.isProcessingMessage,
+            isEnabled: sendEnabled,
+            size: 38,
+            onPressed: sendEnabled ? () => _attemptSend(currentChannel) : null,
+            tooltip: 'Send message',
+          ),
+          const SizedBox(width: 2),
           if (chatProvider.isProcessingMessage) ...[
             const ProgressCircle(radius: 9),
             const SizedBox(width: 12),
