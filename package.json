@@ -22,6 +22,7 @@
     "bezier-easing": "^2.1.0",
     "electron-context-menu": "^4.1.0",
     "electron-store": "^10.1.0",
+    "fix-path": "^5.0.0",
     "flowtoken": "^1.0.40",
     "motion": "^12.23.12",
     "prettier": "^3.6.2",
@@ -33,17 +34,18 @@
     "react-simple-code-editor": "^0.14.1",
     "react-window": "^1.8.11",
     "remark-gfm": "4.0.0",
+    "streamdown": "^2.0.1",
     "tailwindcss": "^4.1.11",
     "zustand": "^5.0.8"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
     "@types/prismjs": "^1.26.5",
+    "@vitejs/plugin-react": "^5.1.4",
     "concurrently": "^9.2.0",
     "cross-env": "^7.0.3",
     "electron": "^37.2.5",
     "electron-builder": "^26.0.12",
-    "electron-devtools-installer": "^4.0.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.0",
     "wait-on": "^8.0.4"
@@ -60,7 +62,11 @@
     ],
     "mac": {
       "category": "public.app-category.developer-tools",
-      "target": "dmg"
+      "target": "dmg",
+      "extendInfo": {
+        "NSQuitAlwaysKeepsWindows": false,
+        "NSSupportsAutomaticTermination": false
+      }
     },
     "win": {
       "target": "nsis"

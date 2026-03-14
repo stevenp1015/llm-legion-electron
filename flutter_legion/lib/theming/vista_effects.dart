@@ -2,6 +2,7 @@
 /// Because Steven is addicted to that glass-like, translucent gorgeousness
 /// 
 /// Provides backdrop blurs, gradient overlays, and glass-like surfaces
+library;
 
 import 'dart:ui';
 import 'package:flutter/material.dart';

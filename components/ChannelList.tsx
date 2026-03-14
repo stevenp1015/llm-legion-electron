@@ -29,7 +29,7 @@ const ChannelSection: React.FC<{
 
     return (
         <div>
-            <h3 className="px-3 pt-4 pb-2 text-xs font-bold uppercase text-neutral-500 flex items-center gap-2">
+            <h3 className="left-light px-3 pt-4 pb-2 text-xs font-bold uppercase text-zinc-500 flex items-center gap-2">
                 {icon}
                 {title}
             </h3>
@@ -49,7 +49,7 @@ const ChannelSection: React.FC<{
                                 initial="idle"
                                 whileHover={!isActive ? "hover" : undefined}
                                 whileTap="tap"
-                                layout
+                                layout={false}
                             >
                                 
                                 {/* Active background with satisfying entrance */}
@@ -157,35 +157,29 @@ const ChannelList: React.FC<ChannelListProps> = ({
 
     return (
         <>
-            <div className="w-64 bg-zinc-100/50 border-r border-zinc-200 flex-shrink-0 flex flex-col">
-                <div className="p-3 border-b border-zinc-200 flex justify-between items-center electron-drag">
-                    <h2 className="text-lg font-semibold text-neutral-700">Channels</h2>
+            <div className="w-64 bg-gradient-to-b from-[#fbf7fc] to-[#e7e3e7] border-r border-zinc-200 flex-shrink-0 flex flex-col shadow-[0px_0px_10px_0px_rgba(0,0,0,0.3)]">
+                <div className="px-4 pt-3 pb-1 flex justify-between items-center electron-drag">
+                {/* shadow-[inset_0px_-8px_4px_-9px_rgba(0,0,0,0.3),0px_5px_4px_-7px_rgba(25,25,25,0.3),0px_4px_5px_0px_rgba(255,255,255,0.4),inset_0px_-4px_10px_-4px_rgba(100,170,235,.3)] */}
+                    <h2 className="text-[2rem] pl-3 font-bold text-transparent bg-clip-text bg-gradient-to-b from-zinc-400/40  to-zinc-900">Channels</h2>
                     <motion.button 
                         onClick={handleOpenCreate}
-                        className="p-1.5 text-neutral-500 rounded-md electron-no-drag"
+                        className="p-1.5 text-zinc-500 rounded-md electron-no-drag"
                         title="Create New Channel"
                         variants={ANIMATION_VARIANTS.button}
                         initial="idle"
                         whileTap="tap"
-                        style={{
-                            backgroundColor: 'transparent'
-                        }}
-                        whileHover={{
-                            backgroundColor: 'rgba(0, 150, 136, 0.1)',
-                            color: 'rgb(20, 184, 166)',
-                            ...ANIMATION_VARIANTS.button.hover
-                        }}
-                    >
+                        >
                         <motion.div
-                            animate={{ rotate: 0 }}
-                            whileHover={{ rotate: 90 }}
-                            transition={{ duration: 0.3, ease: 'easeOut' }}
+                            animate={{ rotate: 0, scale: 1 }}
+                            whileHover={{ rotate: 180, scale: 1.4 }}
+                            transition={{ duration: 0.5, ease: 'backInOut' }}
                         >
                             <PlusIcon className="w-5 h-5" />
                         </motion.div>
                     </motion.button>
                 </div>
-                <div className="flex-grow p-2 overflow-y-auto scrollbar-thin scrollbar-thumb-neutral-300 scrollbar-track-transparent">
+                    <div className="h-24 w-56 bg-[radial-gradient(70%_25%_at_52%_20%,_var(--tw-gradient-stops))] from-slate-500/30  to-transparent to-80%"></div>
+                <div className="flex-grow p-0 overflow-y-auto scrollbar-none">
                     <MinionBuddylist
                         channels={channels}
                         minionConfigs={minionConfigs}
@@ -231,4 +225,4 @@ const ChannelList: React.FC<ChannelListProps> = ({
     );
 };
 
-export default ChannelList;
+export default React.memo(ChannelList);

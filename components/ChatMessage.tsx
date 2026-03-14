@@ -1,7 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, memo, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import { Streamdown } from 'streamdown';
 import { ChatMessageData, MessageSender, RegulatorReport, MinionConfig, ToolCall } from '../types';
 import { LEGION_COMMANDER_NAME } from '../constants';
 import { TrashIcon, PencilIcon, BookOpenIcon, UserCircleIcon, SaveIcon, XMarkIcon, ExclamationTriangleIcon, TerminalIcon } from './Icons';
@@ -11,69 +10,64 @@ import { parseJsonFromMarkdown } from '../services/geminiService';
 import MinionIcon from './MinionIcon';
 import StreamingText from './StreamingText';
 import { getAnimationConfig, ANIMATION_VARIANTS } from '../animations/config';
+import { hexToRgb, formatTimestamp } from '../utils/colorUtils';
 
-const DiaryCard: React.FC<{ diary: any }> = ({ diary }) => {
+const DiaryCard: React.FC<{ diary: any }> = memo(({ diary }) => {
   const renderOpinionUpdates = () => (
     <ul className="list-none pl-0 space-y-1">
       {diary.opinionUpdates.map((update: any, index: number) => (
         <li key={index} className="flex items-center text-sm">
           <span className="font-semibold w-16">{update.participantName}:</span>
-          <span className={`font-bold w-8 text-right pr-2 ${update.newScore > 50 ? 'text-green-400' : 'text-red-400'}`}>{update.newScore}</span>
-          <span className="text-gray-400 italic">({update.reasonForChange})</span>
+          <span className={`w-8 text-right pl-2 pr-3 self-end -translate-y-1/2 ${update.newScore > 50 ? 'text-green-400 font-bold' : 'text-red-400 font-black text-2xl'}`}>{update.newScore}</span>
+          <span className="text-slate-300/80 italic">({update.reasonForChange})</span>
         </li>
       ))}
     </ul>
   );
 
   return (
-    <div className="space-y-2 text-sm">
-      <div className="p-2 bg-gray-900/50 rounded">
-        <p className="text-sm text-gray-400 font-semibold mb-1">Perception</p>
+    <div className="space-y-2 p-2 shadow-ok rounded-xl text-sm">
+      <div className="p-2 shadow-ok-inner bg-gradient-to-br from-zinc-800/80 to-zinc-900/80 rounded-xl">
+        <p className="text-sm text-zinc-300 font-semibold mb-1">Perception</p>
         <p className="text-gray-300 italic">"{diary.perceptionAnalysis}"</p>
       </div>
       <div className="grid grid-cols-2 gap-2">
-        <div className="p-2 bg-gray-900/50 rounded">
-          <p className="text-sm text-gray-400 font-semibold mb-1">Action</p>
+        <div className="p-2 shadow-ok-inner bg-gradient-to-br from-zinc-800/80 to-zinc-900/80 border-zinc-600 border rounded-xl">
+          <p className="text-sm text-zinc-300 font-semibold mb-1">Action</p>
           <p className="font-mono font-bold text-amber-300">{diary.action}</p>
         </div>
-        <div className="p-2 bg-gray-900/50 rounded">
-          <p className="text-sm text-gray-400 font-semibold mb-1">Response Mode</p>
+        <div className="p-2 shadow-ok-inner bg-gradient-to-br from-zinc-800/80 to-zinc-900/80 border-zinc-600 border rounded-xl">
+          <p className="text-sm text-zinc-300 font-semibold mb-1">Response Mode</p>
           <p className="font-semibold text-cyan-300">{diary.selectedResponseMode}</p>
         </div>
       </div>
-      <div className="p-2 bg-gray-900/50 rounded">
-        <p className="text-sm text-gray-400 font-semibold mb-1">Response Plan</p>
+      <div className="p-2 shadow-ok-inner bg-gradient-to-br from-zinc-800/80 to-zinc-900/80 border-zinc-600 border rounded-xl">
+        <p className="text-sm text-zinc-300 font-semibold mb-1">Response Plan</p>
         <p className="text-gray-300">{diary.responsePlan || 'N/A'}</p>
       </div>
       {diary.toolCall && (
-        <div className="p-2 bg-gray-900/50 rounded">
-            <p className="text-sm text-gray-400 font-semibold mb-1">Tool Call</p>
+        <div className="p-2 shadow-ok-inner bg-gradient-to-br from-zinc-800/80 to-zinc-900/80 rounded-xl border-zinc-600 border">
+            <p className="text-sm text-zinc-300 font-semibold mb-1">Tool Call</p>
             <pre className="text-sm text-cyan-200 whitespace-pre-wrap">
                 {diary.toolCall.name}({JSON.stringify(diary.toolCall.arguments, null, 2)})
             </pre>
         </div>
       )}
-      <div className="p-2 bg-gray-900/50 rounded">
-        <p className="text-sm text-gray-400 font-semibold mb-1">Opinion Updates</p>
-        {renderOpinionUpdates()}
-      </div>
+      {diary.opinionUpdates.map((update: any, index: number) => (
+        <div className={`p-2 bg-gradient-to-br from-zinc-800/80 to-zinc-900/80 rounded-xl border ${update.newScore > 50 ? 'shadow-ok-inner-green border-emerald-800/80' : 'shadow-ok-inner-red border-red-800/80'}`}>
+          <p className="text-sm text-zinc-300 font-semibold mb-1">Opinion Updates</p>
+          {renderOpinionUpdates()}
+        </div>
+      ))}
     </div>
   );
-};
+});
 
-const ToolCallBubble: React.FC<{ toolCall: ToolCall, minionName: string, minionConfig?: MinionConfig }> = ({ toolCall, minionName, minionConfig }) => {
+DiaryCard.displayName = 'DiaryCard';
+
+const ToolCallBubble: React.FC<{ toolCall: ToolCall, minionName: string, minionConfig?: MinionConfig }> = memo(({ toolCall, minionName, minionConfig }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isShimmering, setIsShimmering] = useState(false);
-  
-  // Convert hex color to RGB values for gradients
-  const hexToRgb = (hex: string) => {
-    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-    return result ? {
-      r: parseInt(result[1], 16),
-      g: parseInt(result[2], 16),
-      b: parseInt(result[3], 16)
-    } : { r: 59, g: 130, b: 246 }; // fallback to blue
-  };
   
   const handleClick = () => {
     setIsExpanded(!isExpanded);
@@ -81,12 +75,15 @@ const ToolCallBubble: React.FC<{ toolCall: ToolCall, minionName: string, minionC
     setTimeout(() => setIsShimmering(false), 300);
   };
   
-  // Get minion's color or fallback to blue
-  const minionColor = minionConfig?.chatColor || '#3B82F6';
-  const rgb = hexToRgb(minionColor);
-  
-  // Create lighter version for background (15% opacity)
-  const lightBgColor = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.02)`;
+  // Memoize RGB calculations to prevent recalculation on every render
+  const { rgb, lightBgColor } = useMemo(() => {
+    const minionColor = minionConfig?.chatColor || '#3B82F6';
+    const rgbResult = hexToRgb(minionColor) || { r: 59, g: 130, b: 246 };
+    return {
+      rgb: rgbResult,
+      lightBgColor: `rgba(${rgbResult.r}, ${rgbResult.g}, ${rgbResult.b}, 0.02)`
+    };
+  }, [minionConfig?.chatColor]);
   
   return (
     <div className="mt-1 max-w-full">
@@ -97,7 +94,7 @@ const ToolCallBubble: React.FC<{ toolCall: ToolCall, minionName: string, minionC
           backgroundColor: lightBgColor,
           borderColor: `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.3)`
         }}
-        layout="position"
+        layout={false}
       >
         <div className="flex items-center gap-2 text-sm text-zinc-600 relative z-10">
           <TerminalIcon className="w-4 h-4 flex-shrink-0" />
@@ -129,7 +126,7 @@ const ToolCallBubble: React.FC<{ toolCall: ToolCall, minionName: string, minionC
             }}
             initial={{ x: '-100%' }}
             animate={{ x: '100%' }}
-            transition={{ duration: 0.3, ease: 'linear' }}
+            transition={{ duration: 0.1, ease: 'linear' }}
           />
         )}
       </motion.button>
@@ -137,15 +134,15 @@ const ToolCallBubble: React.FC<{ toolCall: ToolCall, minionName: string, minionC
       <AnimatePresence>
         {isExpanded && (
           <motion.div 
-            initial={{ height: 0, opacity: 0, scaleY: 0.8 }}
-            animate={{ height: 'auto', opacity: 1, scaleY: 1 }}
-            exit={{ height: 0, opacity: 0, scaleY: 0.8 }}
-            transition={{ duration: 0.3, ease: 'easeOut' }}
-            className="overflow-hidden mt-2 origin-top"
-            style={{ width: '100%' }}
+            initial={{ scaleY: 0, opacity: 0 }}
+            animate={{ scaleY: 1, opacity: 1 }}
+            exit={{ scaleY: 0, opacity: 0 }}
+            transition={{ duration: 0.1, ease: 'linear' }}
+            className="mt-2 origin-top"
+            style={{ width: '100%', transformOrigin: 'top' }}
           >
             <div className="p-3 bg-zinc-100 border border-zinc-300 rounded-lg text-sm">
-              <div className="font-semibold text-teal-700 mb-2">Tool Parameters:</div>
+              <div className="font-semibold text-sm text-teal-700 mb-2">Tool Parameters:</div>
               <pre className="text-zinc-700 whitespace-pre-wrap font-mono text-sm break-all">
                 {JSON.stringify(toolCall.arguments, null, 2)}
               </pre>
@@ -155,21 +152,13 @@ const ToolCallBubble: React.FC<{ toolCall: ToolCall, minionName: string, minionC
       </AnimatePresence>
     </div>
   );
-};
+});
 
-const ToolOutputBubble: React.FC<{ toolOutput: string, toolName: string, minionConfig?: MinionConfig }> = ({ toolOutput, toolName, minionConfig }) => {
+ToolCallBubble.displayName = 'ToolCallBubble';
+
+const ToolOutputBubble: React.FC<{ toolOutput: string, toolName: string, minionConfig?: MinionConfig }> = memo(({ toolOutput, toolName, minionConfig }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isShimmering, setIsShimmering] = useState(false);
-  
-  // Convert hex color to RGB values for gradients
-  const hexToRgb = (hex: string) => {
-    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-    return result ? {
-      r: parseInt(result[1], 16),
-      g: parseInt(result[2], 16),
-      b: parseInt(result[3], 16)
-    } : { r: 16, g: 185, b: 129 }; // fallback to green
-  };
   
   const handleClick = () => {
     setIsExpanded(!isExpanded);
@@ -177,21 +166,25 @@ const ToolOutputBubble: React.FC<{ toolOutput: string, toolName: string, minionC
     setTimeout(() => setIsShimmering(false), 300);
   };
   
-  // Get minion's color or fallback to green, make it darker for "completion" feel
-  const minionColor = minionConfig?.chatColor || '#10B981';
-  const rgb = hexToRgb(minionColor);
-  // Make it darker by reducing RGB values by 20%
-  const darkerRgb = {
-    r: Math.round(rgb.r * 0.9),
-    g: Math.round(rgb.g * 0.9),
-    b: Math.round(rgb.b * 0.9)
-  };
+  // Memoize RGB calculations to prevent recalculation on every render
+  const { darkerRgb } = useMemo(() => {
+    const minionColor = minionConfig?.chatColor || '#10B981';
+    const rgbResult = hexToRgb(minionColor) || { r: 16, g: 185, b: 129 };
+    // Make it darker by reducing RGB values by 10%
+    return {
+      darkerRgb: {
+        r: Math.round(rgbResult.r * 0.9),
+        g: Math.round(rgbResult.g * 0.9),
+        b: Math.round(rgbResult.b * 0.9)
+      }
+    };
+  }, [minionConfig?.chatColor]);
   
   return (
     <div className="mt-1 relative">
       <button 
         onClick={handleClick} 
-        className="w-full p-2.5 rounded-lg tool-output-bubble  relative overflow-hidden cursor-pointer group"
+        className="w-full p-2.5 rounded-lg tool-output-bubble relative overflow-hidden cursor-pointer group"
       >
         <div className="flex items-center gap-2 text-sm text-zinc-600">
           <span className="font-semibold">[TOOL OUTPUT]</span>
@@ -222,7 +215,7 @@ const ToolOutputBubble: React.FC<{ toolOutput: string, toolName: string, minionC
             }}
             initial={{ x: '-100%' }}
             animate={{ x: '100%' }}
-            transition={{ duration: 0.3, ease: 'linear' }}
+            transition={{ duration: 0.1, ease: 'linear' }}
           />
         )}
       </button>
@@ -230,16 +223,16 @@ const ToolOutputBubble: React.FC<{ toolOutput: string, toolName: string, minionC
       <AnimatePresence>
         {isExpanded && (
           <motion.div 
-            initial={{ height: 0, opacity: 0, scaleY: 0.8 }}
-            animate={{ height: 'auto', opacity: 1, scaleY: 1 }}
-            exit={{ height: 0, opacity: 0, scaleY: 0.8 }}
-            transition={{ duration: 0.3, ease: 'easeOut' }}
-            className="overflow-hidden mt-2 origin-top"
-            style={{ width: '100%' }}
+            initial={{ scaleY: 0, opacity: 0 }}
+            animate={{ scaleY: 1, opacity: 1 }}
+            exit={{ scaleY: 0, opacity: 0 }}
+            transition={{ duration: 0.1, ease: 'linear' }}
+            className="mt-2 origin-top"
+            style={{ width: '100%', transformOrigin: 'top' }}
           >
             <div className="p-3 bg-zinc-100 border border-zinc-300 rounded-lg">
               <div className="prose prose-sm max-w-none break-words">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{toolOutput}</ReactMarkdown>
+                <Streamdown>{toolOutput}</Streamdown>
               </div>
             </div>
           </motion.div>
@@ -247,7 +240,9 @@ const ToolOutputBubble: React.FC<{ toolOutput: string, toolName: string, minionC
       </AnimatePresence>
     </div>
   );
-};
+});
+
+ToolOutputBubble.displayName = 'ToolOutputBubble';
 
 
 import { ChannelType } from '../types';
@@ -286,6 +281,19 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
   const [showDiary, setShowDiary] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  const isUser = message.senderType === MessageSender.User;
+  const isMinion = message.senderType === MessageSender.AI;
+  const isSystem = message.senderType === MessageSender.System;
+  const isTool = message.senderType === MessageSender.Tool;
+  const isRegulator = isMinion && message.senderRole === 'regulator';
+
+  // Memoize regulator report parsing to prevent re-parsing on every render
+  // MUST be called before any conditional returns to satisfy Rules of Hooks
+  const regulatorReport = useMemo(() => 
+    isRegulator ? parseJsonFromMarkdown<RegulatorReport>(message.content) : null,
+    [isRegulator, message.content]
+  );
+
   // Use bulk diary state when in selection mode, individual state otherwise
   const isDiaryVisible = isSelectionMode ? isBulkDiaryVisible : showDiary;
 
@@ -318,12 +326,6 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
     }
   };
 
-  const isUser = message.senderType === MessageSender.User;
-  const isMinion = message.senderType === MessageSender.AI;
-  const isSystem = message.senderType === MessageSender.System;
-  const isTool = message.senderType === MessageSender.Tool;
-  const isRegulator = isMinion && message.senderRole === 'regulator';
-
   const bubbleStyle: React.CSSProperties = {};
   const nameStyle: React.CSSProperties = {};
   const timeStyle: React.CSSProperties = {};
@@ -340,7 +342,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
   }
 
   const getBubbleClasses = () => {
-    const base = 'px-4 pb-3 pt-2.5 rounded-2xl shadow w-full';
+    const base = 'px-4 pb-3 pt-2.5 rounded-2xl shadow-ok w-full';
     if (isUser) {
       switch (channelType) {
         case 'dm':
@@ -348,11 +350,11 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
         case 'minion_minion_auto':
         case 'user_minion_group':
         default:
-          return `${base} bg-amber-500 text-white rounded-br-none`;
+          return `${base} bg-gradient-to-br from-amber-400 to-amber-600 text-white rounded-br-none`;
       }
     }
     if (isRegulator) return `${base} bg-teal-50 border border-teal-200 text-neutral-800 rounded-bl-none`;
-    if (isMinion && minionConfig?.chatColor) return `${base} rounded-bl-none`;
+    if (isMinion && minionConfig?.chatColor) return `${base} rounded-bl-none left-light top-light`;
     return `${base} bg-zinc-100 text-neutral-800 rounded-bl-none border border-zinc-200`;
   };
 
@@ -403,10 +405,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
     }
   };
 
-  const formatTimestamp = (timestamp: number) => {
-    return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  };
-  
+
   if (isSystem) {
     const style = message.isError 
       ? "px-4 py-2 text-center text-sm text-red-600 bg-red-100 rounded-md" 
@@ -458,7 +457,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
   const avatar = isUser ? (
     <motion.button
       onClick={handleAvatarClick}
-      className="w-8 h-8 text-amber-500 relative"
+      className="w-8 h-8 text-amber-500 relative after:content-[''] after:absolute after:top-0 after:left-0 after:w-full after:h-full after:bg-radial-[50%_50%] after:from-amber-400/30 after:to-amber-200/30 after:rounded-full after:z-10"
       title={LEGION_COMMANDER_NAME}
       disabled={isSelectionMode}
       whileHover={!isSelectionMode ? { scale: 1.1 } : undefined}
@@ -519,7 +518,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
           initial={{ scale: 0.8, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           transition={{ delay: 0.1, ...getAnimationConfig('bouncy') }}
-        >
+          >
           {avatar}
         </motion.div>
         <div className={`w-full max-w-[70%] flex flex-col items-start`}>
@@ -537,16 +536,12 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
               animate={{ 
                 scale: 1, 
                 opacity: 1,
-                boxShadow: [
-                  '0 1px 3px rgba(0,0,0,0.1)',
-                  '0 2px 6px rgba(0,0,0,0.15)',
-                  '0 1px 3px rgba(0,0,0,0.1)'
-                ]
+
               }}
               transition={{ 
                 delay: 0.3, 
                 ...getAnimationConfig('slide'),
-                boxShadow: { duration: 2, repeat: Infinity, repeatType: 'reverse' }
+
               }}
             >
               {/* Subtle shimmer effect while typing */}
@@ -563,8 +558,6 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
     );
   }
 
-  const regulatorReport = isRegulator ? parseJsonFromMarkdown<RegulatorReport>(message.content) : null;
-
   return (
     <motion.div
       variants={ANIMATION_VARIANTS.messageEntry}
@@ -576,7 +569,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
       }}
       exit="exit"
       layout={false}
-      transition={getAnimationConfig('gentle')}
+      transition={getAnimationConfig('elastic')}
       className={`flex items-end gap-3 p-3 ${isUser ? 'justify-end' : ''}`}>
       {!isUser && (
         <motion.div 
@@ -590,23 +583,27 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
       )}
       
       <div className={`w-full max-w-[80%] flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>
-        <div className="relative group/message w-full">
+        <div className="relative group/message w-full origin-bottom">
             <AnimatePresence>
-              {isDiaryVisible && isMinion && !isRegulator && message.internalDiary && (
+              {isMinion && !isRegulator && message.internalDiary && 
+                isDiaryVisible ? (
                 <motion.div
-                  layout
-                  initial={{ opacity: 0, y: 20, height: 0 }}
-                  animate={{ opacity: 1, y: 0, height: 'auto', marginBottom: '0.5rem' }}
-                  exit={{ opacity: 0, y: 20, height: 0, marginBottom: 0 }}
-                  transition={getAnimationConfig('bouncy')}
+                  layout={false}
+                  initial={{ opacity: 0, y: 0, scaleY: 0 }}
+                  animate={{ opacity: 1, y: 15, scaleY: 1 }}
+                  exit={{ opacity: 0, y: 0, scaleY: 0 }}
+                  transition={getAnimationConfig('slide')}
                   className="w-full origin-bottom"
-                >
-                  <div className="p-3 bg-gray-800 text-gray-200 border border-gray-700 rounded-md shadow-lg">
-                    <h4 className="text-sm font-semibold text-teal-400 mb-2">Internal Diary ({message.senderName})</h4>
+                  >
+                  <div className="px-3 w-[98%] translate-x-[1%] py-4 bg-gradient-to-br from-zinc-600 from-[-10%] via-zinc-700 to-zinc-800 text-gray-200 border-2 border-zinc-400 rounded-b-none rounded-t-3xl origin-bottom shadow-ok"
+                        onContextMenu={handleContextMenu}>
+                    <h4 className="text-sm font-bold pl-3 tracking-widest -translate-y-1.5 text-teal-400">
+                      Internal Diary ({message.senderName})
+                    </h4>
                     <DiaryCard diary={message.internalDiary} />
                   </div>
                 </motion.div>
-              )}
+              ) : null}
             </AnimatePresence>
 
           {/* Selection mode: no hover buttons, use right-click and selection actions */}

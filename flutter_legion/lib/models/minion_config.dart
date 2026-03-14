@@ -2,7 +2,7 @@ import 'package:json_annotation/json_annotation.dart';
 
 part 'minion_config.g.dart';
 
-@JsonSerializable()
+@JsonSerializable(explicitToJson: true)
 class UsageStats {
   final int totalTokens;
   final int totalCost;
@@ -22,7 +22,7 @@ class UsageStats {
   Map<String, dynamic> toJson() => _$UsageStatsToJson(this);
 }
 
-@JsonSerializable()
+@JsonSerializable(explicitToJson: true)
 class MinionConfig {
   final String id;
   final String name;
@@ -48,8 +48,8 @@ class MinionConfig {
     required this.apiKeyId,
     this.chatColor,
     this.fontColor,
-    this.temperature = 0.7,
-    this.maxTokens = 2000,
+    this.temperature = 1.0,
+    this.maxTokens = 32768,
     this.enabled = true,
     this.usageStats,
     this.mcpTools,

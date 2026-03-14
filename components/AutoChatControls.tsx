@@ -78,4 +78,4 @@ const AutoChatControls: React.FC<AutoChatControlsProps> = ({ channel, onTogglePl
     );
 };
 
-export default AutoChatControls;
+export default React.memo(AutoChatControls);

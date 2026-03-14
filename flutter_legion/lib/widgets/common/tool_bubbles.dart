@@ -2,6 +2,7 @@
 /// Features pulsing indicators, expandable content, and staggered reveal
 /// 
 /// Replicates the React tool bubble system with Flutter sophistication
+library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';

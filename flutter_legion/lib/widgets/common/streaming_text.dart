@@ -2,6 +2,7 @@
 /// Handles Markdown rendering and shows typing caret during streaming
 /// 
 /// Replicates the React StreamingText.tsx with Flutter markdown and animations
+library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';

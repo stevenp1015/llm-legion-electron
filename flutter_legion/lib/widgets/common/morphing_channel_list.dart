@@ -2,6 +2,7 @@
 /// The highlight smoothly slides and morphs between channels
 /// 
 /// Replicates React's layoutId animation with Flutter Hero/AnimatedPositioned
+library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';

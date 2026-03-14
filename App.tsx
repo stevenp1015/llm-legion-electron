@@ -8,12 +8,11 @@ import Modal from './components/Modal';
 import MinionConfigForm from './components/LLMConfigForm';
 import ChannelList from './components/ChannelList';
 import AutoChatControls from './components/AutoChatControls';
-import AnalyticsDashboard from './components/AnalyticsDashboard';
 import McpServerManager from './components/McpServerManager';
-import { CogIcon, ChartBarIcon, ChevronDoubleDownIcon, ChevronUpIcon } from './components/Icons';
+import { CogIcon, ChevronDoubleDownIcon, ChevronUpIcon } from './components/Icons';
 import { APP_TITLE, LEGION_COMMANDER_NAME, ACTIVE_CHANNEL_STORAGE_KEY } from './constants';
 import legionApiService from './services/legionApiService';
-import { useChannelMessages, useHasMoreMessages, useProcessingState, useAutoScrollEnabled, useActiveMinionProcessors, useMessageStore, useSelectionMode, useSelectedMessages, useBulkDiaryVisible } from './stores/messageStore';
+import { useChannelMessages, useHasMoreMessages, useAutoScrollEnabled, useActiveMinionProcessors, useMessageStore, useSelectionMode, useSelectedMessages, useBulkDiaryVisible } from './stores/messageStore';
 import SelectionHeader from './components/SelectionHeader';
 
 
@@ -26,11 +25,10 @@ const App: React.FC = () => {
   const [promptPresets, setPromptPresets] = useState<PromptPreset[]>([]);
   const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
   
-  const [isServiceInitialized, setIsServiceInitialized] = useState(false);
+  const [isServiceInitialized, setIsServiceInitialized] = useState(() => legionApiService.isInitialized);
   const [isMinionsPanelOpen, setIsMinionsPanelOpen] = useState(false);
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
   const [editingMinion, setEditingMinion] = useState<MinionConfig | undefined>(undefined);
-  const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
   const [isMcpManagerOpen, setIsMcpManagerOpen] = useState(false);
   
   // Message store hooks - using selective subscriptions to prevent re-render cascade
@@ -48,6 +46,10 @@ const App: React.FC = () => {
   const bulkDiaryVisible = useBulkDiaryVisible();
 
   const autoChatTimeoutRef = useRef<number | null>(null);
+  
+  // Ref for stable channel access in callbacks without dependency cascade
+  const channelsRef = useRef<Channel[]>(channels);
+  useEffect(() => { channelsRef.current = channels; }, [channels]);
   const scrollTimeoutRef = useRef<number | null>(null);
   const service = useRef(legionApiService).current;
 
@@ -88,8 +90,12 @@ const App: React.FC = () => {
     }
   }, [service, isServiceInitialized]);
   
-  // Effect for initializing the service
+  // Effect for initializing the service — no-ops instantly on HMR re-mounts since the singleton is already initialized
   useEffect(() => {
+    if (legionApiService.isInitialized) {
+      setIsServiceInitialized(true);
+      return;
+    }
     const initializeService = async () => {
       await service.init();
       setIsServiceInitialized(true);
@@ -117,8 +123,7 @@ const App: React.FC = () => {
                    prevConfig.name !== newConfig.name ||
                    prevConfig.role !== newConfig.role ||
                    prevConfig.chatColor !== newConfig.chatColor ||
-                   prevConfig.fontColor !== newConfig.fontColor ||
-                   JSON.stringify(prevConfig.usageStats) !== JSON.stringify(newConfig.usageStats);
+                   prevConfig.fontColor !== newConfig.fontColor;
           });
           
           return hasChanged ? newConfigs : prev;
@@ -133,15 +138,30 @@ const App: React.FC = () => {
     }
   }, [isServiceInitialized, loadInitialData]);
 
-  // Auto-scroll effect for chat history
+  // Auto-scroll effect for chat history -- throttled to prevent layout thrashing during streaming
+  // Reading scrollHeight forces layout, and setting scrollTop forces another layout pass.
+  // During streaming, currentChannelMessages changes every ~100ms (after chunk throttle),
+  // so we additionally throttle the scroll to fire at most every 150ms.
+  const autoScrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (isAutoScrollEnabled && chatHistoryRef.current && currentChannelId && currentChannelMessages.length > 0) {
-      requestAnimationFrame(() => {
-        if (chatHistoryRef.current) {
-          chatHistoryRef.current.scrollTop = chatHistoryRef.current.scrollHeight;
-        }
-      });
+      if (!autoScrollTimerRef.current) {
+        autoScrollTimerRef.current = setTimeout(() => {
+          autoScrollTimerRef.current = null;
+          requestAnimationFrame(() => {
+            if (chatHistoryRef.current) {
+              chatHistoryRef.current.scrollTop = chatHistoryRef.current.scrollHeight;
+            }
+          });
+        }, 150);
+      }
     }
+    return () => {
+      if (autoScrollTimerRef.current) {
+        clearTimeout(autoScrollTimerRef.current);
+        autoScrollTimerRef.current = null;
+      }
+    };
   }, [currentChannelMessages, isAutoScrollEnabled, currentChannelId]);
 
   useEffect(() => {
@@ -227,13 +247,14 @@ const App: React.FC = () => {
     messageStoreActions.upsertMessage(message);
     
     // Check for chat naming in minion buddy chats
+    // Uses channelsRef to avoid channels dependency cascade
     if (message.senderType === MessageSender.AI && message.content) {
-      const channel = channels.find(c => c.id === message.channelId);
+      const channel = channelsRef.current.find(c => c.id === message.channelId);
       if (channel?.type === 'minion_buddy_chat' && channel.name === 'New Chat') {
         extractAndApplyChatName(message.channelId, message.content);
       }
     }
-  }, [messageStoreActions, channels, extractAndApplyChatName]);
+  }, [messageStoreActions, extractAndApplyChatName]);
 
   const handleToolUpdate = useCallback((updatedMessage: ChatMessageData) => {
     messageStoreActions.upsertMessage(updatedMessage);
@@ -332,7 +353,7 @@ const App: React.FC = () => {
   }, [loadMoreMessages, hasMoreMessagesInChannel]);
   
   // --- Channel Management ---
-  const selectChannel = async (channelId: string) => {
+  const selectChannel = useCallback(async (channelId: string) => {
       // Don't do a goddamn thing if we're not actually changing channels.
       if (channelId === currentChannelId) return;
 
@@ -352,7 +373,7 @@ const App: React.FC = () => {
       
       // Just switch the channel immediately
       setCurrentChannelId(channelId);
-  };
+  }, [currentChannelId, service, messageStoreActions]);
   const handleAddOrUpdateChannel = async (channelData: ChannelPayload) => { await service.addOrUpdateChannel(channelData); setChannels(await service.getChannels()); };
   
   const handleDeleteChannel = async (channelId: string) => { 
@@ -385,7 +406,7 @@ const App: React.FC = () => {
 
 
   // --- Core Message Sending Logic ---
-  const processAndDispatchMessage = async (channelId: string, message: ChatMessageData) => {
+  const processAndDispatchMessage = useCallback(async (channelId: string, message: ChatMessageData) => {
     messageStoreActions.setProcessingMessage(true);
     messageStoreActions.clearActiveMinionProcessors();
     
@@ -401,7 +422,7 @@ const App: React.FC = () => {
     });
 
     messageStoreActions.setProcessingMessage(false);
-  }
+  }, [service, messageStoreActions, handleMessageUpsert, handleMessageChunk, handleMessageAdd, handleToolUpdate]);
 
   const handleManualRegulatorCall = useCallback(async () => {
       if (!currentChannelId) return;
@@ -467,30 +488,36 @@ const App: React.FC = () => {
     return () => { if (autoChatTimeoutRef.current) clearTimeout(autoChatTimeoutRef.current); };
   }, [currentChannelId, channels, isProcessingMessage, runAutoChatTurn]);
 
-  const handleTogglePlayPause = (isActive: boolean) => {
+  const handleTogglePlayPause = useCallback((isActive: boolean) => {
     if (!currentChannelId) return;
-    const channel = channels.find(c => c.id === currentChannelId);
+    const channel = channelsRef.current.find(c => c.id === currentChannelId);
     if (channel) handleAddOrUpdateChannel({ ...channel, isAutoModeActive: isActive, members: channel.members });
-  };
-  const handleDelayChange = (type: 'fixed' | 'random', value: number | { min: number, max: number }) => {
+  }, [currentChannelId, handleAddOrUpdateChannel]);
+  const handleDelayChange = useCallback((type: 'fixed' | 'random', value: number | { min: number, max: number }) => {
     if (!currentChannelId) return;
-    const channel = channels.find(c => c.id === currentChannelId);
+    const channel = channelsRef.current.find(c => c.id === currentChannelId);
     if (channel) {
       const updates: Partial<Channel> = { autoModeDelayType: type };
       if (type === 'fixed' && typeof value === 'number') updates.autoModeFixedDelay = value;
       else if (type === 'random' && typeof value === 'object') updates.autoModeRandomDelay = value;
       handleAddOrUpdateChannel({ ...channel, ...updates, members: channel.members });
     }
-  };
+  }, [currentChannelId, handleAddOrUpdateChannel]);
   
   const currentChannel = channels.find(c => c.id === currentChannelId);
-  const allMinionNames = minionConfigs.map(m => m.name);
+  const allMinionNames = useMemo(() => minionConfigs.map(m => m.name), [minionConfigs]);
   const activeMinionProcessors = useActiveMinionProcessors();
   
-  // Selection mode computed values
+  // Selection mode computed values - memoized to prevent downstream re-renders
   const selectedCount = selectedMessageIds.size;
-  const selectedMessages = currentChannelMessages.filter(m => selectedMessageIds.has(m.id));
-  const hasSelectedMinions = selectedMessages.some(m => m.senderType === MessageSender.AI && m.senderRole !== 'regulator');
+  const { selectedMessages, hasSelectedMinions } = useMemo(() => {
+    if (!isSelectionMode) return { selectedMessages: [] as ChatMessageData[], hasSelectedMinions: false };
+    const msgs = currentChannelMessages.filter(m => selectedMessageIds.has(m.id));
+    return {
+      selectedMessages: msgs,
+      hasSelectedMinions: msgs.some(m => m.senderType === MessageSender.AI && m.senderRole !== 'regulator'),
+    };
+  }, [isSelectionMode, currentChannelMessages, selectedMessageIds]);
   
   // Filter processing minions for current channel (pure component logic, not selector)
   const processingMinionNames = useMemo(() => {
@@ -500,6 +527,12 @@ const App: React.FC = () => {
       .map(([name]) => name);
     return processing;
   }, [activeMinionProcessors, currentChannel?.id]); // Use channel id instead of members array
+  
+  // Memoize existingNames for config form to avoid re-creating array every render
+  const existingMinionNames = useMemo(() => 
+    minionConfigs.map(c => c.name).filter(name => !editingMinion || name !== editingMinion.name),
+    [minionConfigs, editingMinion]
+  );
 
   // Memoize the minion config map with stable dependencies to prevent unnecessary recalculation
   const minionConfigMap = useMemo(() => {
@@ -513,7 +546,7 @@ const App: React.FC = () => {
 
   return (
     <div className="h-screen w-screen flex flex-col bg-gradient-to-tl from-zinc-100 to-zinc-50 overflow-hidden text-neutral-600 selection:bg-amber-300 selection:text-neutral-900">
-      <header className="p-3 bg-zinc-100/100 border-b border-zinc-200 shadow-sm flex items-center justify-between flex-shrink-0 z-20 electron-drag">
+      <header className="p-3 bg-gradient-to-b from-white to-zinc-100 to-90% border-b border-zinc-200 shadow-md shadow-zinc-500/20 flex items-center justify-between flex-shrink-0 z-20 electron-drag">
         <div className="flex ml-20 items-center gap-3 select-none">
           <img src="https://picsum.photos/seed/legionicon/40/40" alt="Legion Icon" className="w-10 h-10 rounded-full ring-2 ring-amber-500" />
           <div>
@@ -527,10 +560,7 @@ const App: React.FC = () => {
             title={isAutoScrollEnabled ? "Auto-Scroll On" : "Auto-Scroll Off"}>
             {isAutoScrollEnabled ? <ChevronDoubleDownIcon className="w-6 h-6 text-teal-600" /> : <ChevronUpIcon className="w-6 h-6 text-amber-800" />}
           </button>
-          <button onClick={() => setIsAnalyticsOpen(true)}
-            className="p-2 rounded-md text-neutral-500 hover:text-amber-500 hover:bg-zinc-200 transition-colors" title="Open Analytics Dashboard">
-            <ChartBarIcon className="w-6 h-6" />
-          </button>
+
           <button onClick={() => setIsMcpManagerOpen(true)}
             className="p-2 rounded-md text-neutral-500 hover:text-amber-500 hover:bg-zinc-200 transition-colors" title="MCP Server Manager">
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -576,7 +606,7 @@ const App: React.FC = () => {
         <main className="flex-1 flex flex-col overflow-hidden">
           {currentChannel ? (
             <>
-              <div className="p-3 border-b border-zinc-200 bg-zinc-50/60 opacity-60 flex justify-between items-center">
+              <div className="p-3 border-b border-zinc-200 bg-zinc-50/60 shadow-ok opacity-60 flex justify-between items-center">
                 <div className="select-none">
                   <h3 className="text-lg font-semibold text-neutral-800">{currentChannel.name}</h3>
                   <p className="text-xs text-neutral-500">{currentChannel.description}</p>
@@ -589,10 +619,10 @@ const App: React.FC = () => {
               </div>
               <div 
                 ref={chatHistoryRef}
-                className="flex-1 overflow-y-auto p-4 flex justify-center"
+                className="flex-1 overflow-y-auto p-4  flex justify-center"
                 onScroll={handleScroll}
               >
-                <div className="w-full max-w-6xl space-y-3">
+                <div className="w-full max-w-5xl space-y-2">
                 {hasMoreMessagesInChannel && (
                   <div className="text-center py-2">
                     <button 
@@ -610,8 +640,8 @@ const App: React.FC = () => {
                       message={message}
                       minionConfig={minionConfigMap.get(message.senderName)}
                       channelType={currentChannel?.type}
-                      onDelete={() => deleteMessageFromChannel(message.channelId, message.id)}
-                      onEdit={(content) => editMessageContent(message.channelId, message.id, content)}
+                      onDelete={deleteMessageFromChannel}
+                      onEdit={editMessageContent}
                       isProcessing={processingMinionNames.includes(message.senderName)}
                       isSelectionMode={isSelectionMode}
                       isSelected={selectedMessageIds.has(message.id)}
@@ -652,7 +682,7 @@ const App: React.FC = () => {
             initialConfig={editingMinion}
             onSave={handleSaveConfig}
             onCancel={() => setIsConfigModalOpen(false)}
-            existingNames={minionConfigs.map(c => c.name).filter(name => !editingMinion || name !== editingMinion.name)}
+            existingNames={existingMinionNames}
             apiKeys={apiKeys}
             promptPresets={promptPresets}
             modelOptions={modelOptions}
@@ -662,11 +692,7 @@ const App: React.FC = () => {
           />
         </Modal>
 
-        <AnalyticsDashboard
-          isOpen={isAnalyticsOpen}
-          onClose={() => setIsAnalyticsOpen(false)}
-          minionConfigs={minionConfigs}
-        />
+
 
         <McpServerManager
           isOpen={isMcpManagerOpen}

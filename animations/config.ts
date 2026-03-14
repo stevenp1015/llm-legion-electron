@@ -76,10 +76,25 @@ export const EASING = {
   linear: [0, 0, 1, 1] as [number, number, number, number],
 };
 
-// Reduced motion check for accessibility
+// Cached reduced motion check for accessibility
+// Listens for changes to invalidate cache
+let _prefersReducedMotion: boolean | null = null;
+let _motionMediaQuery: MediaQueryList | null = null;
+
 export const prefersReducedMotion = () => {
+  if (_prefersReducedMotion !== null) return _prefersReducedMotion;
   if (typeof window === 'undefined') return false;
-  return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  
+  _motionMediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+  _prefersReducedMotion = _motionMediaQuery.matches;
+  
+  // Listen for changes and invalidate cache
+  _motionMediaQuery.addEventListener('change', (e) => {
+    _prefersReducedMotion = e.matches;
+    _cachedVariants = null; // Invalidate variants cache too
+  });
+  
+  return _prefersReducedMotion;
 };
 
 // Get animation config based on user preference
@@ -90,93 +105,112 @@ export const getAnimationConfig = (type: keyof typeof SPRING_CONFIG) => {
   return SPRING_CONFIG[type];
 };
 
-// Advanced animation variants for specific UI patterns
-export const ANIMATION_VARIANTS = {
-  // Channel selection with smooth slide + morph
-  channelSelection: {
-    inactive: { 
-      scale: 1,
-      opacity: 0,
-      x: -8,
-      transition: getAnimationConfig('snappy')
-    },
-    active: { 
-      scale: 1,
-      opacity: 1,
-      x: 0,
-      transition: getAnimationConfig('morph')
-    },
-    hover: {
-      scale: 1.02,
-      transition: getAnimationConfig('haptic')
-    }
-  },
-  
-  // Message entrance with satisfying bounce
-  messageEntry: {
-    hidden: { 
-      opacity: 0, 
-      scale: 1
-    },
-    visible: { 
-      opacity: 1, 
-      scale: 1,
-      transition: {
-        ...getAnimationConfig('snappy'),
-        filter: { duration: 0.3 }
+// Cached animation variants - rebuilt only when motion preference changes
+let _cachedVariants: ReturnType<typeof buildAnimationVariants> | null = null;
+
+function buildAnimationVariants() {
+  return {
+    // Channel selection with smooth slide + morph
+    channelSelection: {
+      inactive: { 
+        scale: 1,
+        opacity: 0,
+        x: -8,
+        transition: getAnimationConfig('snappy')
+      },
+      active: { 
+        scale: 1,
+        opacity: 1,
+        x: 0,
+        transition: getAnimationConfig('morph')
+      },
+      hover: {
+        scale: 1.02,
+        transition: getAnimationConfig('haptic')
       }
     },
-    exit: { 
-      opacity: 0,
-      transition: getAnimationConfig('snappy')
-    }
-  },
-
-  // Button interactions that feel tactile
-  button: {
-    idle: { scale: 1, opacity: 0.8 },
-    hover: { 
-      scale: 1.1, 
-      opacity: 1,
-      transition: getAnimationConfig('stiff')
+    
+    // Message entrance with satisfying bounce
+    messageEntry: {
+      hidden: { 
+        opacity: 0, 
+        scale: 1
+      },
+      visible: { 
+        opacity: 1, 
+        scale: 1,
+        transition: {
+          ...getAnimationConfig('elastic'),
+          filter: { duration: 0.3 }
+        }
+      },
+      exit: { 
+        opacity: 0,
+        transition: getAnimationConfig('elastic')
+      }
     },
-    tap: { 
-      scale: 0.9,
-      transition: { 
-        ...getAnimationConfig('stiff'),
-        duration: 0.1
+
+    // Button interactions that feel tactile
+    button: {
+      idle: { scale: 1, opacity: 0.8 },
+      hover: { 
+        scale: 1.1, 
+        opacity: 1,
+        transition: getAnimationConfig('stiff')
+      },
+      tap: { 
+        scale: 0.9,
+        transition: { 
+          ...getAnimationConfig('stiff'),
+          duration: 0.1
+        }
+      }
+    },
+
+    // Typing indicator with personality
+    typing: {
+      animate: {
+        scale: [1, 1.2, 1],
+        opacity: [0.5, 1, 0.5],
+        transition: {
+          duration: 1.2,
+          repeat: Infinity,
+          ease: 'easeInOut'
+        }
+      }
+    },
+
+    // Modal/panel slide-in
+    panel: {
+      hidden: { 
+        opacity: 0,
+        x: 300,
+        scale: 0.9
+      },
+      visible: { 
+        opacity: 1,
+        x: 0,
+        scale: 1,
+        transition: getAnimationConfig('slide')
       }
     }
-  },
+  } as const;
+}
 
-  // Typing indicator with personality
-  typing: {
-    animate: {
-      scale: [1, 1.2, 1],
-      opacity: [0.5, 1, 0.5],
-      transition: {
-        duration: 1.2,
-        repeat: Infinity,
-        ease: 'easeInOut'
-      }
-    }
-  },
-
-  // Modal/panel slide-in
-  panel: {
-    hidden: { 
-      opacity: 0,
-      x: 300,
-      scale: 0.9
-    },
-    visible: { 
-      opacity: 1,
-      x: 0,
-      scale: 1,
-      transition: getAnimationConfig('slide')
-    }
+// Getter that returns cached variants, rebuilding only when needed
+export const getAnimationVariants = () => {
+  if (!_cachedVariants) {
+    _cachedVariants = buildAnimationVariants();
   }
+  return _cachedVariants;
 };
+
+// Keep backward compat: ANIMATION_VARIANTS is still exported but now dynamic
+export const ANIMATION_VARIANTS = new Proxy({} as ReturnType<typeof buildAnimationVariants>, {
+  get(_target, prop: string) {
+    return getAnimationVariants()[prop as keyof ReturnType<typeof buildAnimationVariants>];
+  }
+});
 
 // Shimmer effect for loading states
 export const shimmerKeyframes = {

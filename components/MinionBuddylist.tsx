@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Channel, MinionConfig } from '../types';
 import { HashtagIcon, ChevronRightIcon, PlusIcon, TrashIcon } from './Icons';
@@ -18,7 +18,6 @@ interface MinionChatGroup {
   minionName: string;
   minionConfig: MinionConfig;
   chats: Channel[];
-  isExpanded: boolean;
 }
 
 const MinionBuddylist: React.FC<MinionBuddylistProps> = ({
@@ -30,6 +29,12 @@ const MinionBuddylist: React.FC<MinionBuddylistProps> = ({
   onDeleteChannel
 }) => {
   const [expandedMinions, setExpandedMinions] = useState<Set<string>>(new Set());
+
+  const triggerHaptic = useCallback((pattern: string = 'alignment') => {
+    if (window.isElectron && window.electronAPI?.invoke) {
+      window.electronAPI.invoke('haptic:perform', pattern);
+    }
+  }, []);
 
   // Group minion buddy chats by minion name
   const minionGroups = useMemo(() => {
@@ -66,12 +71,11 @@ const MinionBuddylist: React.FC<MinionBuddylistProps> = ({
         minionName,
         minionConfig,
         chats: sortedChats,
-        isExpanded: expandedMinions.has(minionName)
       };
     }).filter(Boolean) as MinionChatGroup[];
 
     return groups.sort((a, b) => a.minionName.localeCompare(b.minionName));
-  }, [channels, minionConfigs, expandedMinions]);
+  }, [channels, minionConfigs]);
 
   const toggleMinionExpansion = (minionName: string) => {
     setExpandedMinions(prev => {
@@ -91,51 +95,53 @@ const MinionBuddylist: React.FC<MinionBuddylistProps> = ({
 
   return (
     <div>
-      <h3 className="px-3 pt-4 pb-2 text-xs font-bold uppercase text-neutral-500 flex items-center gap-2">
-        <HashtagIcon className="w-4 h-4" />
-        Minion Buddylist
+      <h3 className="px-3 pb-2 text-sm font-bold uppercase text-transparent bg-clip-text bg-gradient-to-br from-slate-200 to-80% to-slate-800 flex items-center gap-2">
+        <HashtagIcon className="w-4 h-4 text-slate-500" />
+        Buddylist
       </h3>
       <div className="space-y-1">
         {minionGroups.map(group => (
           <div key={group.minionName}>
             {/* Minion Header */}
-            <div className="px-2">
+            <div className="px-4">
               <motion.button
                 onClick={() => toggleMinionExpansion(group.minionName)}
+                onMouseEnter={() => triggerHaptic('alignment')}
                 className="w-full flex items-center justify-between gap-2 px-3 py-1 text-left text-sm rounded-md text-neutral-600 hover:text-neutral-800 hover:bg-zinc-100"
                 variants={ANIMATION_VARIANTS.button}
                 initial="idle"
                 whileHover="hover"
                 whileTap="tap"
               >
-                <div className="flex items-center gap-2">
+                <div className="flex justify-between items-center gap-2">
                   <motion.div
-                    animate={{ rotate: group.isExpanded ? 90 : 0 }}
+                    animate={{ rotate: expandedMinions.has(group.minionName) ? 90 : 0 }}
                     transition={getAnimationConfig('snappy')}
                   >
-                    <ChevronRightIcon className="w-4 h-4" />
                   </motion.div>
+                
                   <div 
-                    className="w-3 h-3 rounded-full border-2 border-white shadow-sm"
-                    style={{ backgroundColor: group.minionConfig.chatColor || '#059669' }}
-                  />
-                  <span className="font-medium">{group.minionName}</span>
+                    className="w-3 h-3 rounded-full relative shadow-[0_0_5px_0px] shadow-slate-800/20"
+                    style={{ background: `linear-gradient(135deg, #ffffff -50%, #ffffff -20%, ${group.minionConfig.chatColor} 70%, #555555 200%)` || '#059669' }}
+                    >
+                    <span className="text-xs text-zinc-600 absolute -left-[18px] font-medium -top-0"> {/* how can i align the text in this entire list to the left? you can do so by using flex justify-between  */}
+                      {group.chats.length}
+                    </span>
+                  </div>
+                  <span className={`font-medium text-transparent bg-clip-text bg-gradient-to-br from-zinc-300 from-[0%] via-[${group.minionConfig.chatColor || '#333333'}] to-zinc-900`}>{group.minionName}</span>
                 </div>
-                <span className="text-xs text-neutral-400">
-                  {group.chats.length}
-                </span>
               </motion.button>
             </div>
 
             {/* Expandable Chat List */}
             <AnimatePresence initial={false}>
-              {group.isExpanded && (
+              {expandedMinions.has(group.minionName) && (
                 <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
+                  initial={{ scaleY: 0, opacity: 0 }}
+                  animate={{ scaleY: 1, opacity: 1 }}
+                  exit={{ scaleY: 0, opacity: 0 }}
                   transition={getAnimationConfig('gentle')}
-                  className="overflow-hidden ml-4 space-y-1"
+                  className="ml-4 space-y-1 origin-top"
                 >
                   {/* New Chat Button */}
                   <div className="px-2">
@@ -198,7 +204,7 @@ const MinionBuddylist: React.FC<MinionBuddylistProps> = ({
                             e.stopPropagation();
                             onDeleteChannel(chat.id);
                           }}
-                          className={`absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md opacity-0 group-hover:opacity-80 transition-opacity ${
+                          className={`absolute right-2 items-center top-1/2 -translate-y-1/2 rounded-md opacity-0 group-hover:opacity-80 transition-opacity ${
                             isActive ? 'text-white hover:text-red-200' : 'text-neutral-400 hover:text-red-500'
                           }`}
                           title={`Delete ${chat.name}`}
@@ -207,7 +213,7 @@ const MinionBuddylist: React.FC<MinionBuddylistProps> = ({
                           whileHover="hover"
                           whileTap="tap"
                         >
-                          <TrashIcon className="w-3 h-3"/>
+                          <TrashIcon className="w-3 h-3 -translate-y-2"/>
                         </motion.button>
                       </div>
                     );
@@ -222,4 +228,4 @@ const MinionBuddylist: React.FC<MinionBuddylistProps> = ({
   );
 };
 
-export default MinionBuddylist;
+export default React.memo(MinionBuddylist);

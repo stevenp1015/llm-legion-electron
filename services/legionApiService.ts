@@ -18,6 +18,7 @@ import {
 } from '../constants';
 import { callLiteLLMAPIStream, callLiteLLMApiForJson } from './geminiService';
 import { mcpElectronService } from './mcpElectronService';
+import { continuityManagerService } from './continuityManagerService';
 
 
 // @ts-nocheck
@@ -109,7 +110,7 @@ class LegionApiService {
   private modelQuotas: Record<string, ModelQuotas>;
   private apiKeyRoundRobinIndex = 0;
   private sharedPoolUsage: Record<string, { requests: UsageStat[] }> = {};
-  private isInitialized = false;
+  isInitialized = false;
 
   constructor() {
     // Initialize with empty data, will be populated by async init
@@ -455,16 +456,33 @@ class LegionApiService {
     const { channelId, triggeringMessage: userMessage, ...callbacks } = params;
     
     if (!this.messages[channelId]) this.messages[channelId] = [];
-    this.messages[channelId].push(userMessage);
     
     const channel = this.channels.find(c => c.id === channelId);
     if (!channel) return;
-    
-    channel.messageCounter = (channel.messageCounter || 0) + 1;
 
     const minionsInChannel = this.minionConfigs.filter(minion => 
       channel.members.includes(minion.name) && minion.role === 'standard'
     );
+    
+    // ═══════════════════════════════════════════════════════════════════════
+    // CONTINUITY MANAGER: Update memory banks BEFORE adding the new message
+    // This ensures stale detection is based on the state before this message
+    // ═══════════════════════════════════════════════════════════════════════
+    try {
+      await continuityManagerService.prepareMinionsForChannel(
+        channelId,
+        minionsInChannel,
+        this.channels,
+        this.messages
+      );
+    } catch (error) {
+      console.error('[LegionAPI] Continuity manager error (non-blocking):', error);
+    }
+    // ═══════════════════════════════════════════════════════════════════════
+    
+    // NOW add the user message after stale detection
+    this.messages[channelId].push(userMessage);
+    channel.messageCounter = (channel.messageCounter || 0) + 1;
 
     if (minionsInChannel.length === 0 && userMessage.senderType === MessageSender.User) {
        await this._checkForRegulatorAction(channel, callbacks.onRegulatorReport, callbacks.onSystemMessage);
@@ -505,9 +523,18 @@ class LegionApiService {
         .filter((t): t is McpTool => !!t);
 
     // Use minion-specific dynamic history if provided, otherwise generate filtered history
-    const chatHistory = dynamicHistoryForMinion || formatChatHistoryForLLM(this.messages[channelId] || [], channelId, 25, minion.name);
+    const chatHistory = dynamicHistoryForMinion || formatChatHistoryForLLM(this.messages[channelId] || [], channelId, 50, minion.name);
 
-    const prompt = PERCEPTION_AND_PLANNING_PROMPT_TEMPLATE( minion.name, minion.system_prompt_persona, JSON.stringify(minion.lastDiaryState || {}), JSON.stringify(minion.opinionScores, null, 2), chatHistory, lastSenderName, channelType, availableTools );
+    // ═══════════════════════════════════════════════════════════════════════
+    // CONTINUITY MANAGER: Inject cross-channel memory context into persona
+    // ═══════════════════════════════════════════════════════════════════════
+    const memoryContext = continuityManagerService.getCompiledContextForMinion(minion.id);
+    const enrichedPersona = memoryContext 
+      ? `${minion.system_prompt_persona}\n\n${memoryContext}`
+      : minion.system_prompt_persona;
+    // ═══════════════════════════════════════════════════════════════════════
+
+    const prompt = PERCEPTION_AND_PLANNING_PROMPT_TEMPLATE( minion.name, enrichedPersona, JSON.stringify(minion.lastDiaryState || {}), JSON.stringify(minion.opinionScores, null, 2), chatHistory, lastSenderName, channelType, availableTools );
     const { data: plan, error, usage } = await callLiteLLMApiForJson<PerceptionPlan>(prompt, minion.model_id, minion.params.temperature, keyInfo.key);
     if (usage) this._updateUsage(minion.id, usage);
     return { minion, plan, error };
@@ -554,6 +581,21 @@ class LegionApiService {
       return;
     }
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // CONTINUITY MANAGER: Update memory banks for auto-chat turns too
+    // ═══════════════════════════════════════════════════════════════════════
+    try {
+      await continuityManagerService.prepareMinionsForChannel(
+        channelId,
+        minionsInChannel,
+        this.channels,
+        this.messages
+      );
+    } catch (error) {
+      console.error('[LegionAPI] Continuity manager error in auto-chat (non-blocking):', error);
+    }
+    // ═══════════════════════════════════════════════════════════════════════
+
     const initialChatHistory = formatChatHistoryForLLM(currentMessages, channelId);
     
     await this._runAgentLoop({
@@ -591,17 +633,27 @@ class LegionApiService {
     const { channel, minionsInChannel, initialChatHistory, lastSenderName, isAutoChat = false, onMinionResponse, onMinionResponseChunk, onMinionProcessingUpdate, onSystemMessage, onRegulatorReport, onToolUpdate } = params;
     const channelId = channel.id;
     
-    // Track per-minion dynamic histories instead of shared history
     const dynamicHistoryPerMinion = new Map<string, string>();
     minionsInChannel.forEach(minion => {
       dynamicHistoryPerMinion.set(minion.name, initialChatHistory);
     });
     
-    const MAX_TURNS = 10; // Safety break for tool use loops
+    const MAX_TURNS = 10;
+    let activeToolMinionName: string | null = null;
 
     for (let turn = 0; turn < MAX_TURNS; turn++) {
-      const perceptionPromises = minionsInChannel.map(minion => {
-        if (isAutoChat && minion.name === lastSenderName && minionsInChannel.length > 1) {
+      let minionsToQuery = minionsInChannel;
+      if (isAutoChat && activeToolMinionName) {
+        minionsToQuery = minionsInChannel.filter(m => m.name === activeToolMinionName);
+        if (minionsToQuery.length === 0) {
+          onSystemMessage({ id: `sys-focus-err-${Date.now()}`, channelId, senderType: MessageSender.System, senderName: 'System', content: `Error: Tool-focused minion "${activeToolMinionName}" not found in channel. Breaking focus.`, timestamp: Date.now(), isError: true });
+          activeToolMinionName = null;
+          minionsToQuery = minionsInChannel;
+        }
+      }
+
+      const perceptionPromises = minionsToQuery.map(minion => {
+        if (isAutoChat && !activeToolMinionName && minion.name === lastSenderName && minionsInChannel.length > 1) {
           return Promise.resolve({ minion, plan: null, error: "Cannot respond to self in auto-chat." });
         }
         const minionSpecificHistory = dynamicHistoryPerMinion.get(minion.name);
@@ -620,12 +672,16 @@ class LegionApiService {
         .sort((a, b) => a.plan.predictedResponseTime - b.plan.predictedResponseTime);
 
       if (actors.length === 0) {
-        onSystemMessage({ id: `sys-no-action-${Date.now()}`, channelId, senderType: MessageSender.System, senderName: 'System', content: 'No minions chose to act.', timestamp: Date.now() });
-        return; // End of the line, no one is acting.
+        if (activeToolMinionName) {
+          onSystemMessage({ id: `sys-focus-break-${Date.now()}`, channelId, senderType: MessageSender.System, senderName: 'System', content: `${activeToolMinionName} completed its task chain by choosing to stay silent.`, timestamp: Date.now() });
+          activeToolMinionName = null;
+        } else {
+          onSystemMessage({ id: `sys-no-action-${Date.now()}`, channelId, senderType: MessageSender.System, senderName: 'System', content: 'No minions chose to act.', timestamp: Date.now() });
+        }
+        return;
       }
 
-      // In user-triggered turns, all actors can respond. In auto-chat, only the first one does.
-      const actorsToProcess = isAutoChat ? actors.slice(0, 1) : actors;
+      const actorsToProcess = (isAutoChat || activeToolMinionName) ? actors.slice(0, 1) : actors;
       let aToolWasUsedThisTurn = false;
       
       for (const { minion, plan } of actorsToProcess) {
@@ -633,23 +689,15 @@ class LegionApiService {
 
         if (plan.action === 'USE_TOOL' && plan.toolCall) {
           aToolWasUsedThisTurn = true;
+          if (isAutoChat) {
+            activeToolMinionName = minion.name;
+            onSystemMessage({ id: `sys-focus-gain-${Date.now()}`, channelId, senderType: MessageSender.System, senderName: 'System', content: `${minion.name} is now focused on a multi-step task.`, timestamp: Date.now() });
+          }
 
-          // If the minion wants to speak before using the tool, let it.
           if (plan.speakWhileTooling) {
-            const preToolMessage: ChatMessageData = {
-              id: `ai-${minion.id}-${Date.now()}-pretool`,
-              channelId,
-              senderType: MessageSender.AI,
-              senderName: minion.name,
-              content: plan.speakWhileTooling,
-              timestamp: Date.now(),
-              isProcessing: false,
-              senderRole: 'standard'
-            };
+            const preToolMessage: ChatMessageData = { id: `ai-${minion.id}-${Date.now()}-pretool`, channelId, senderType: MessageSender.AI, senderName: minion.name, content: plan.speakWhileTooling, timestamp: Date.now(), isProcessing: false, senderRole: 'standard' };
             onMinionResponse(preToolMessage);
             this.messages[channelId].push(preToolMessage);
-            
-            // Update ALL minions' histories with the speech (public message)
             dynamicHistoryPerMinion.forEach((history, minionName) => {
               dynamicHistoryPerMinion.set(minionName, history + `\n[MINION ${minion.name}]: ${plan.speakWhileTooling}`);
             });
@@ -657,7 +705,6 @@ class LegionApiService {
 
           const toolOutput = await this._executeMcpTool(channelId, minion.name, plan.toolCall, onSystemMessage, onToolUpdate);
           
-          // PRIVACY FIX: Only update THIS minion's history with tool info
           const currentHistory = dynamicHistoryPerMinion.get(minion.name) || '';
           const updatedHistory = currentHistory + 
             `\n[TOOL CALL] Minion ${minion.name} used tool: ${plan.toolCall.name}(${JSON.stringify(plan.toolCall.arguments)})` +
@@ -665,52 +712,41 @@ class LegionApiService {
             `\n[SYSTEM REMINDER]: You have just received the output from your tool call. Analyze this output and the conversation history to decide your next action. If the task is not yet complete, prioritize using another tool. Only choose to 'SPEAK' when you have all the information needed to provide a final answer.`;
           dynamicHistoryPerMinion.set(minion.name, updatedHistory);
           
-          onMinionProcessingUpdate(minion.name, false); // Tool use is quick
+          onMinionProcessingUpdate(minion.name, false);
         }
         
         if (plan.action === 'SPEAK') {
+          if (isAutoChat && activeToolMinionName) {
+            onSystemMessage({ id: `sys-focus-release-${Date.now()}`, channelId, senderType: MessageSender.System, senderName: 'System', content: `${minion.name} has completed its task and is now speaking.`, timestamp: Date.now() });
+            activeToolMinionName = null;
+          }
+
           const tempMessageId = `ai-${minion.id}-${Date.now()}`;
           onMinionResponse({ id: tempMessageId, channelId, senderType: MessageSender.AI, senderName: minion.name, content: "", timestamp: Date.now(), isProcessing: true, senderRole: 'standard' });
           
           const isFirstMessage = !minion.chatColor;
-          const otherMinionColors = this.minionConfigs
-            .filter(m => m.id !== minion.id && m.chatColor && m.fontColor)
-            .map(m => ({ name: m.name, chatColor: m.chatColor!, fontColor: m.fontColor! }));
-
+          const otherMinionColors = this.minionConfigs.filter(m => m.id !== minion.id && m.chatColor && m.fontColor).map(m => ({ name: m.name, chatColor: m.chatColor!, fontColor: m.fontColor! }));
           const minionSpecificHistory = dynamicHistoryPerMinion.get(minion.name) || '';
-          const responseGenPrompt = RESPONSE_GENERATION_PROMPT_TEMPLATE(
-            minion.name,
-            minion.system_prompt_persona,
-            minionSpecificHistory,
-            plan,
-            undefined, // toolOutput
-            isFirstMessage,
-            otherMinionColors,
-            '#FAFAFA' // Correct background color
-          );
+          const responseGenPrompt = RESPONSE_GENERATION_PROMPT_TEMPLATE(minion.name, minion.system_prompt_persona, minionSpecificHistory, plan, undefined, isFirstMessage, otherMinionColors, '#FAFAFA');
           const keyInfo = this._selectApiKey(minion);
           await this.runStreamingResponse(channelId, tempMessageId, minion, plan, responseGenPrompt, keyInfo, onMinionResponse, onMinionResponseChunk, onSystemMessage);
           
           const finalMessage = (this.messages[channelId] || []).find(m => m.id === tempMessageId);
           if (finalMessage) {
-            // Update ALL minions' histories with this public speech
             dynamicHistoryPerMinion.forEach((history, minionName) => {
               dynamicHistoryPerMinion.set(minionName, history + `\n[MINION ${minion.name}]: ${finalMessage.content}`);
             });
             if(channel) channel.messageCounter = (channel.messageCounter || 0) + 1;
           }
           onMinionProcessingUpdate(minion.name, false);
-          // If this is an auto-chat turn, we break after the first speaker.
+          
           if (isAutoChat) return; 
         }
       }
 
-      // After processing all actors for this iteration, decide whether to continue the loop.
       if (aToolWasUsedThisTurn) {
-        // If a tool was used, we must loop again to get the next action plan.
         continue;
       } else {
-        // If no tools were used, it means everyone who was going to act has spoken. The turn is over.
         return;
       }
     }

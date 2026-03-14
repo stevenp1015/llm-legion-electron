@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
-import { shallow } from 'zustand/shallow';
+import { useShallow } from 'zustand/react/shallow';
 import { ChatMessageData } from '../types';
 
 // Stable constants to prevent infinite re-renders
@@ -24,6 +24,7 @@ export interface MessageState {
   // Chunk processing state
   chunkQueue: Map<string, string[]>;
   isProcessingQueue: Map<string, boolean>;
+  chunkTimers: Map<string, ReturnType<typeof setTimeout>>;
 }
 
 export interface MessageActions {
@@ -81,6 +82,7 @@ export const useMessageStore = create<MessageStore>()(
     
     chunkQueue: new Map(),
     isProcessingQueue: new Map(),
+    chunkTimers: new Map(),
 
     // Message CRUD operations
     addMessage: (channelId: string, message: ChatMessageData) => {
@@ -104,6 +106,39 @@ export const useMessageStore = create<MessageStore>()(
     },
 
     upsertMessage: (message: ChatMessageData) => {
+      // When the stream ends, flush any buffered chunks before finalizing.
+      // There's a race window: chunks may have arrived in the ~100ms since the last
+      // timer-based flush. If we don't flush them now, they'd be lost.
+      if (message._skipContentUpdate) {
+        const messageKey = `${message.channelId}-${message.id}`;
+        const { chunkQueue, chunkTimers, isProcessingQueue } = get();
+        const pendingTimer = chunkTimers.get(messageKey);
+        if (pendingTimer) {
+          clearTimeout(pendingTimer);
+          chunkTimers.delete(messageKey);
+        }
+        const pendingChunks = chunkQueue.get(messageKey);
+        if (pendingChunks && pendingChunks.length > 0) {
+          const remainingText = pendingChunks.join('');
+          chunkQueue.delete(messageKey);
+          isProcessingQueue.delete(messageKey);
+          set((state) => ({
+            messages: {
+              ...state.messages,
+              [message.channelId]: (state.messages[message.channelId] || []).map(m => {
+                if (m.id === message.id) {
+                  return { ...m, content: m.content + remainingText };
+                }
+                return m;
+              })
+            }
+          }));
+        } else {
+          chunkQueue.delete(messageKey);
+          isProcessingQueue.delete(messageKey);
+        }
+      }
+
       set((state) => {
         const channelMessages = state.messages[message.channelId] || [];
         const existingMsgIndex = channelMessages.findIndex(m => m.id === message.id);
@@ -172,25 +207,28 @@ export const useMessageStore = create<MessageStore>()(
       }));
     },
 
-    // Chunk processing
+    // Chunk processing -- throttled to ~10fps (100ms) instead of 60fps (rAF)
     processMessageChunk: (channelId: string, messageId: string, chunk: string) => {
       const messageKey = `${channelId}-${messageId}`;
-      const { chunkQueue, isProcessingQueue } = get();
+      const { chunkQueue, chunkTimers } = get();
       
       if (!chunkQueue.has(messageKey)) {
         chunkQueue.set(messageKey, []);
       }
       chunkQueue.get(messageKey)!.push(chunk);
 
-      if (!isProcessingQueue.get(messageKey)) {
-        isProcessingQueue.set(messageKey, true);
-        requestAnimationFrame(() => get()._processChunkQueue(channelId, messageId));
+      if (!chunkTimers.has(messageKey)) {
+        const timerId = setTimeout(() => {
+          get()._processChunkQueue(channelId, messageId);
+        }, 100);
+        chunkTimers.set(messageKey, timerId);
       }
     },
 
     _processChunkQueue: (channelId: string, messageId: string) => {
       const messageKey = `${channelId}-${messageId}`;
-      const { chunkQueue, isProcessingQueue } = get();
+      const { chunkQueue, isProcessingQueue, chunkTimers } = get();
+      chunkTimers.delete(messageKey);
       const queue = chunkQueue.get(messageKey);
 
       if (!queue || queue.length === 0) {
@@ -214,8 +252,6 @@ export const useMessageStore = create<MessageStore>()(
           })
         }
       }));
-
-      requestAnimationFrame(() => get()._processChunkQueue(channelId, messageId));
     },
 
     // Processing state management
@@ -340,10 +376,12 @@ export const useHasMoreMessages = (channelId: string | null) =>
   useMessageStore((state) => channelId ? state.hasMoreMessages[channelId] || false : false);
 
 export const useProcessingState = () => 
-  useMessageStore((state) => ({
-    isProcessingMessage: state.isProcessingMessage,
-    activeMinionProcessors: state.activeMinionProcessors
-  }));
+  useMessageStore(
+    useShallow((state) => ({
+      isProcessingMessage: state.isProcessingMessage,
+      activeMinionProcessors: state.activeMinionProcessors
+    }))
+  );
 
 export const useAutoScrollEnabled = () => 
   useMessageStore((state) => state.isAutoScrollEnabled);

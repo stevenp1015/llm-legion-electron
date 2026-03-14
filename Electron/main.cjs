@@ -4,19 +4,34 @@ const { spawn } = require('child_process');
 const fs = require('fs').promises;
 const { EventEmitter } = require('events');
 const contextMenu = require('electron-context-menu');
-const { default: installExtension, REACT_DEVELOPER_TOOLS } = require('electron-devtools-installer');
 
-// Alternative manual installation function
-const installReactDevToolsManual = async () => {
+// Fix PATH for spawned processes on macOS/Linux
+// This ensures executables like npx, uvx are found when app is launched from Finder
+const fixPath = require('fix-path').default;
+fixPath();
+
+
+
+// Fix for macOS secure coding crash on older versions (macOS 12.5 specifically)
+// This must be called BEFORE app.whenReady()
+if (process.platform === 'darwin') {
+  // Disable persistent state restoration to prevent NSPersistentUIRequiresSecureCoding crash
+  app.commandLine.appendSwitch('disable-features', 'ElectronSerialChooser');
+  app.commandLine.appendSwitch('disable-features', 'ElectronPersistentWindowState');
+
+  // Completely disable automatic state restoration on macOS
   try {
-    // Try the extension ID directly
-    const REACT_DEVTOOLS_EXTENSION_ID = 'fmkadmapgofadopljbjfkapdkoienihi';
-    await installExtension(REACT_DEVTOOLS_EXTENSION_ID);
-    console.log('🎯 React DevTools installed manually via extension ID');
-  } catch (error) {
-    console.log('❌ Manual React DevTools installation failed:', error.message);
+    app.setLoginItemSettings({
+      openAtLogin: false,
+      openAsHidden: false,
+      restoreState: false
+    });
+  } catch (e) {
+    // Ignore if setLoginItemSettings fails
   }
-};
+}
+
+
 
 // MCP Server Management
 class McpProcessManager extends EventEmitter {
@@ -61,96 +76,97 @@ class McpProcessManager extends EventEmitter {
       if (!server.command || (Array.isArray(server.command) && server.command.length === 0)) {
         throw new Error('No command specified for MCP server');
       }
-      
+
       const command = Array.isArray(server.command) ? server.command[0] : server.command;
       const commandArgs = Array.isArray(server.command) ? server.command.slice(1) : [];
       const allArgs = [...commandArgs, ...(server.args || [])];
-      
+
       if (!command || command.trim() === '') {
         throw new Error('Empty command specified for MCP server');
       }
-      
+
       console.log(`Starting MCP server "${server.name}": ${command} ${allArgs.join(' ')}`);
-      
-      const childProcess = spawn(command.trim(), allArgs, {
-        stdio: ['pipe', 'pipe', 'pipe'],
-        env: { ...process.env, ...server.env },
-        detached: false,
-        cwd: process.cwd() // Use the app's working directory
+
+      // Import MCP SDK dynamically since this is CommonJS
+      const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
+      const { StdioClientTransport } = await import('@modelcontextprotocol/sdk/client/stdio.js');
+
+      // Create MCP client
+      const client = new Client({
+        name: "Legion C&C Client",
+        version: "1.0.0"
+      }, {
+        capabilities: {
+          tools: {},
+          prompts: {},
+          resources: {}
+        }
       });
 
-      server.process = childProcess;
-      server.pid = childProcess.pid;
+      // Create stdio transport - this spawns and manages the process
+      const transport = new StdioClientTransport({
+        command: command.trim(),
+        args: allArgs,
+        env: { ...process.env, ...server.env }
+      });
 
-      // Set up process cleanup
+      // Set up cleanup handler
       const cleanup = () => {
-        server.process = undefined;
-        server.pid = undefined;
-        server.status = 'stopped';
-        this.emit('server-status-changed', serverId, 'stopped');
+        if (server.client) {
+          server.client.close().catch(err => console.error(`Error closing client ${server.name}:`, err));
+        }
+        if (server.transport) {
+          server.transport.close().catch(err => console.error(`Error closing transport ${server.name}:`, err));
+        }
+        server.client = undefined;
+        server.transport = undefined;
+        server.tools = [];
+        if (server.status !== 'stopping') {
+          server.status = 'stopped';
+          this.emit('server-status-changed', serverId, 'stopped');
+        }
       };
 
       this.processCleanupHandlers.set(serverId, cleanup);
 
-      childProcess.on('error', (error) => {
+      // Listen for transport errors and closure
+      transport.onerror = (error) => {
+        console.error(`Transport error for ${server.name}:`, error);
         server.lastError = error.message;
         server.status = 'error';
         this.emit('server-status-changed', serverId, 'error', error.message);
         cleanup();
-      });
+      };
 
-      childProcess.on('exit', (code, signal) => {
+      transport.onclose = () => {
         if (server.status !== 'stopping') {
-          server.lastError = `Process exited with code ${code}, signal ${signal}`;
+          console.log(`Transport closed unexpectedly for ${server.name}`);
+          server.lastError = 'Connection closed unexpectedly';
           server.status = 'error';
-          this.emit('server-status-changed', serverId, 'error', server.lastError);
+          this.emit('server-status-changed', serverId, 'error', 'Connection closed unexpectedly');
         }
         cleanup();
-      });
+      };
 
-      // Try to connect via MCP SDK to discover actual tools
-      setTimeout(async () => {
-        try {
-          // Import MCP SDK dynamically since this is CommonJS
-          const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
-          const { StdioClientTransport } = await import('@modelcontextprotocol/sdk/client/stdio.js');
-          
-          // Create MCP client
-          const client = new Client({
-            name: "Legion C&C Client",
-            version: "1.0.0"
-          });
-          
-          // Create stdio transport with command and args instead of process
-          const transport = new StdioClientTransport({
-            command: command.trim(),
-            args: allArgs
-          });
-          
-          // Connect to the MCP server  
-          await client.connect(transport);
-          
-          // Discover tools
-          const toolsResult = await client.listTools();
-          server.tools = toolsResult.tools || [];
-          server.client = client;
-          server.transport = transport;
-          
-          server.status = 'running';
-          this.emit('server-status-changed', serverId, 'running');
-          this.emit('server-tools-updated', serverId, server.tools);
-          
-        } catch (error) {
-          console.error(`Failed to connect to MCP server ${server.name}:`, error);
-          // Fallback - assume it's running but no tools discovered
-          server.tools = [];
-          server.status = 'running';
-          server.lastError = `Failed to discover tools: ${error.message}`;
-          this.emit('server-status-changed', serverId, 'running');
-        }
-      }, 2000);
+      // Connect to the MCP server
+      await client.connect(transport);
+
+      // Store client and transport
+      server.client = client;
+      server.transport = transport;
+
+      // Discover tools
+      const toolsResult = await client.listTools();
+      server.tools = toolsResult.tools || [];
+
+      server.status = 'running';
+      this.emit('server-status-changed', serverId, 'running');
+      this.emit('server-tools-updated', serverId, server.tools);
+
+      console.log(`MCP server "${server.name}" started with ${server.tools.length} tools`);
 
     } catch (error) {
+      console.error(`Failed to start MCP server ${server.name}:`, error);
       server.lastError = error.message;
       server.status = 'error';
       this.emit('server-status-changed', serverId, 'error', server.lastError);
@@ -164,20 +180,34 @@ class McpProcessManager extends EventEmitter {
     server.status = 'stopping';
     this.emit('server-status-changed', serverId, 'stopping');
 
-    const cleanup = this.processCleanupHandlers.get(serverId);
-    if (server.process && !server.process.killed) {
-      server.process.kill('SIGTERM');
-      
-      // Force kill after 5 seconds if it doesn't exit gracefully
-      setTimeout(() => {
-        if (server.process && !server.process.killed) {
-          server.process.kill('SIGKILL');
-        }
-      }, 5000);
-    }
+    try {
+      // Close client first (sends proper disconnect messages)
+      if (server.client) {
+        await server.client.close();
+        server.client = undefined;
+      }
 
-    if (cleanup) {
-      cleanup();
+      // Then close transport (kills the process gracefully)
+      if (server.transport) {
+        await server.transport.close();
+        server.transport = undefined;
+      }
+
+      server.tools = [];
+      server.status = 'stopped';
+      this.emit('server-status-changed', serverId, 'stopped');
+
+      console.log(`MCP server "${server.name}" stopped`);
+    } catch (error) {
+      console.error(`Error stopping server ${server.name}:`, error);
+      // Force cleanup even if close fails
+      server.client = undefined;
+      server.transport = undefined;
+      server.tools = [];
+      server.status = 'stopped';
+      this.emit('server-status-changed', serverId, 'stopped');
+    } finally {
+      // Remove cleanup handler
       this.processCleanupHandlers.delete(serverId);
     }
   }
@@ -282,6 +312,51 @@ class McpConfigManager {
   }
 }
 
+// Haptic Feedback (macOS only)
+let hapticBinaryPath = null;
+
+async function initHaptics() {
+  if (process.platform !== 'darwin') return;
+
+  const userDataPath = app.getPath('userData');
+  const binaryPath = path.join(userDataPath, 'haptic-feedback');
+  const swiftSource = path.join(__dirname, 'haptic.swift');
+
+  try {
+    const [binaryStat, sourceStat] = await Promise.allSettled([
+      fs.stat(binaryPath),
+      fs.stat(swiftSource)
+    ]);
+
+    if (sourceStat.status === 'rejected') {
+      console.warn('Haptic feedback unavailable: haptic.swift not found at', swiftSource);
+      return;
+    }
+
+    const needsCompile =
+      binaryStat.status === 'rejected' ||
+      (sourceStat.status === 'fulfilled' &&
+        binaryStat.status === 'fulfilled' &&
+        sourceStat.value.mtimeMs > binaryStat.value.mtimeMs);
+
+    if (needsCompile) {
+      console.log('Compiling haptic binary...');
+      await new Promise((resolve, reject) => {
+        const proc = spawn('swiftc', [swiftSource, '-o', binaryPath], { stdio: 'pipe' });
+        proc.on('close', code => (code === 0 ? resolve() : reject(new Error(`swiftc exit ${code}`))));
+        proc.on('error', reject);
+      });
+    }
+
+    await fs.chmod(binaryPath, 0o755);
+    hapticBinaryPath = binaryPath;
+    console.log('Haptic feedback initialized');
+  } catch (err) {
+    console.warn('Haptic feedback unavailable:', err.message);
+    hapticBinaryPath = null;
+  }
+}
+
 // Global instances
 let mainWindow;
 let mcpProcessManager;
@@ -295,6 +370,8 @@ function createWindow() {
     minWidth: 800,
     minHeight: 600,
     titleBarStyle: 'hiddenInset',
+    // Explicitly disable state restoration to prevent macOS 12.5 crash
+    ...(process.platform === 'darwin' ? { restorable: false } : {}),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -311,41 +388,52 @@ function createWindow() {
     // Try different dev server ports
     const ports = [5173, 5174, 5175, 3000];
     let currentPortIndex = 0;
-    
+    let hasLoaded = false;
+
     const tryLoadDevServer = () => {
       if (currentPortIndex >= ports.length) {
         console.error('Could not connect to dev server on any port');
         return;
       }
-      
+
       const port = ports[currentPortIndex];
+      console.log(`Attempting to load dev server on port ${port}...`);
       mainWindow.loadURL(`http://localhost:${port}`);
-      
-      mainWindow.webContents.once('did-fail-load', () => {
+
+      mainWindow.webContents.once('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+        console.log(`Failed to load ${validatedURL}: ${errorDescription} (code: ${errorCode})`);
         currentPortIndex++;
-        setTimeout(tryLoadDevServer, 1000);
+        setTimeout(tryLoadDevServer, 500);
+      });
+
+      mainWindow.webContents.once('did-finish-load', () => {
+        if (!hasLoaded) {
+          hasLoaded = true;
+          console.log(`Successfully loaded dev server on port ${port}`);
+        }
       });
     };
-    
+
     tryLoadDevServer();
+
+    // Failsafe: Show window after 3 seconds in dev mode even if ready-to-show doesn't fire
+    setTimeout(() => {
+      if (!mainWindow.isVisible()) {
+        console.log('Failsafe: Showing window after timeout');
+        mainWindow.show();
+        if (mainWindow.webContents.isLoading()) {
+          mainWindow.webContents.openDevTools();
+        }
+      }
+    }, 3000);
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   }
 
   mainWindow.once('ready-to-show', () => {
+    console.log('Window ready-to-show event fired');
     mainWindow.show();
     
-    // Try installing React DevTools again after window is ready (fallback)
-    if (process.env.NODE_ENV === 'development') {
-      setTimeout(async () => {
-        try {
-          await installExtension(REACT_DEVELOPER_TOOLS);
-          console.log('🔄 React DevTools re-installed after window ready');
-        } catch (error) {
-          console.log('🤷‍♂️ DevTools already installed or failed on second attempt');
-        }
-      }, 1000);
-    }
   });
 
   // Handle external links
@@ -359,54 +447,6 @@ function createWindow() {
     }
   });
 
-  // Install React DevTools when DOM is ready
-  mainWindow.webContents.once('dom-ready', () => {
-    if (process.env.NODE_ENV === 'development') {
-      console.log('🌐 DOM ready - attempting React DevTools installation...');
-      
-      setTimeout(async () => {
-        try {
-          const name = await installExtension(REACT_DEVELOPER_TOOLS);
-          console.log('🎯 React DevTools installed on DOM ready:', name);
-        } catch (error) {
-          console.log('🔄 DevTools installation on DOM ready skipped (likely already installed)');
-          // Try manual installation as fallback
-          await installReactDevToolsManual();
-        }
-        
-        // Don't auto-refresh DevTools - let user do it manually to avoid blank page issues
-      }, 500);
-    }
-  });
-
-  // Add a mechanism to manually refresh DevTools
-  mainWindow.webContents.on('did-finish-load', () => {
-    if (process.env.NODE_ENV === 'development') {
-      console.log('🎯 Page finished loading - React DevTools should be available now');
-      
-      // Inject a script to check if React is detected
-      setTimeout(() => {
-        mainWindow.webContents.executeJavaScript(`
-          console.log('🔍 Checking React detection...');
-          console.log('React on window:', !!window.React);
-          console.log('ReactDOM on window:', !!window.ReactDOM);
-          console.log('DevTools hook:', !!window.__REACT_DEVTOOLS_GLOBAL_HOOK__);
-          
-          // Try to manually trigger DevTools detection
-          if (window.__REACT_DEVTOOLS_GLOBAL_HOOK__ && window.React) {
-            console.log('✅ Attempting manual React DevTools activation');
-            try {
-              if (window.__REACT_DEVTOOLS_GLOBAL_HOOK__.onCommitFiberRoot) {
-                console.log('🎯 DevTools hook has onCommitFiberRoot - React should be detected');
-              }
-            } catch (e) {
-              console.log('🤷‍♂️ Error checking DevTools hook:', e.message);
-            }
-          }
-        `).catch(err => console.log('Failed to execute detection script:', err));
-      }, 1000);
-    }
-  });
 }
 
 // IPC Handlers
@@ -547,6 +587,14 @@ function setupIpcHandlers() {
     }
   });
 
+  // Haptic Feedback
+  ipcMain.handle('haptic:perform', (_, pattern) => {
+    if (!hapticBinaryPath || process.platform !== 'darwin') return;
+    const proc = spawn(hapticBinaryPath, [pattern || 'generic'], { stdio: 'ignore', detached: true });
+    proc.on('error', () => {});
+    proc.unref();
+  });
+
   // Electron Store IPC Handlers
   ipcMain.handle('store:get', (_, key, defaultValue) => {
     return store.get(key, defaultValue);
@@ -635,24 +683,14 @@ app.whenReady().then(async () => {
     }
   }
 
+  // Compile haptic binary before window opens
+  await initHaptics();
+
   setupIpcHandlers();
   createWindow();
   setupEventForwarding();
 
-  // Install React DevTools in development
-  if (process.env.NODE_ENV === 'development') {
-    try {
-      const name = await installExtension(REACT_DEVELOPER_TOOLS);
-      console.log('✅ React DevTools installed successfully:', name);
-      
-      // Also log available extensions for debugging
-      const extensions = BrowserWindow.getAllWindows()[0]?.webContents.session.getAllExtensions();
-      console.log('📦 All installed extensions:', extensions);
-    } catch (error) {
-      console.error('❌ Failed to install React DevTools:', error);
-      console.error('Error details:', error.message);
-    }
-  }
+
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

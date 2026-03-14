@@ -17,7 +17,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       'mcp:call-tool',
       'store:get',
       'store:set',
-      'store:migrate'
+      'store:migrate',
+      'haptic:perform'
     ];
     
     if (validChannels.includes(channel)) {

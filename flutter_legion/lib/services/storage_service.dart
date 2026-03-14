@@ -36,7 +36,16 @@ class StorageService {
   }
 
   Future<void> saveChannel(Channel c) async {
-    await _channels!.put(c.id, c.toJson());
+    // Convert to JSON and back to ensure all nested objects are serialized
+    final json = c.toJson();
+    final storableMap = Map<String, dynamic>.from(json);
+    // Ensure autoModeRandomDelay is stored as a map, not an object
+    if (storableMap['autoModeRandomDelay'] != null) {
+      storableMap['autoModeRandomDelay'] = Map<String, dynamic>.from(
+        storableMap['autoModeRandomDelay'] as Map
+      );
+    }
+    await _channels!.put(c.id, storableMap);
   }
 
   Future<void> removeChannel(String id) async {
@@ -53,7 +62,16 @@ class StorageService {
   }
 
   Future<void> saveMinion(MinionConfig m) async {
-    await _minions!.put(m.id, m.toJson());
+    // Convert to JSON and back to ensure all nested objects are serialized
+    final json = m.toJson();
+    final storableMap = Map<String, dynamic>.from(json);
+    // Ensure usageStats is stored as a map, not an object
+    if (storableMap['usageStats'] != null) {
+      storableMap['usageStats'] = Map<String, dynamic>.from(
+        storableMap['usageStats'] as Map
+      );
+    }
+    await _minions!.put(m.id, storableMap);
   }
 
   Future<void> removeMinion(String id) async {
