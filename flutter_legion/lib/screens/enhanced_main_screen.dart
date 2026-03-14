@@ -717,7 +717,12 @@ class _EnhancedMainScreenState extends State<EnhancedMainScreen>
             isSelectionMode: chatProvider.isSelectionMode,
             isSelected: chatProvider.selectedMessageIds.contains(message.id),
             isBulkDiaryVisible: chatProvider.bulkDiaryVisible.contains(message.id),
-            onEnterSelectionMode: () => chatProvider.toggleSelectionMode(),
+            onEnterSelectionMode: () {
+              if (!chatProvider.isSelectionMode) {
+                chatProvider.toggleSelectionMode();
+              }
+              _handleToggleSelection(message.id, false);
+            },
             onToggleSelection: _handleToggleSelection,
             onDelete: () async {
               await _legionService.deleteMessage(message.channelId, message.id);
