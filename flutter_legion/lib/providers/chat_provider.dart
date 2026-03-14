@@ -166,8 +166,10 @@ class ChatProvider extends ChangeNotifier {
     _isSelectionMode = !_isSelectionMode;
     if (!_isSelectionMode) {
       clearSelection();
+      return;
     }
-    // Selection management
+
+    notifyListeners();
   }
 
   void selectMessage(String messageId) {
@@ -264,15 +266,33 @@ class ChatProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // User message creation helper
-  ChatMessage _createUserMessage(String channelId, String content) {
+
+  ChatMessage createUserMessage(
+    String channelId,
+    String content,
+    String senderName,
+  ) {
+    final trimmedContent = content.trim();
+    final normalizedSenderName = senderName.trim().isEmpty
+        ? LegionApiService.legionCommanderName
+        : senderName.trim();
+
     return ChatMessage(
       id: 'user-${DateTime.now().millisecondsSinceEpoch}',
       channelId: channelId,
       senderType: MessageSender.user,
-      senderName: LegionApiService.legionCommanderName,
-      content: content,
+      senderName: normalizedSenderName,
+      content: trimmedContent,
       timestamp: DateTime.now().millisecondsSinceEpoch,
+    );
+  }
+
+  // User message creation helper
+  ChatMessage _createUserMessage(String channelId, String content) {
+    return createUserMessage(
+      channelId,
+      content,
+      LegionApiService.legionCommanderName,
     );
   }
 
