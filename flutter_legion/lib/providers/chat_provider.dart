@@ -166,8 +166,10 @@ class ChatProvider extends ChangeNotifier {
     _isSelectionMode = !_isSelectionMode;
     if (!_isSelectionMode) {
       clearSelection();
+      return;
     }
-    // Selection management
+
+    notifyListeners();
   }
 
   void selectMessage(String messageId) {
