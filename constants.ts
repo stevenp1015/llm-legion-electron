@@ -564,16 +564,26 @@ const formatChatHistoryForLLM =
 };
 
 
-// TODO: Just fucking around with this for right now 
-// Have an idea and two versions of implementation that vary slightly-
+// ═══════════════════════════════════════════════════════════════════════════
+// CONTINUITY MANAGER - IMPLEMENTED
+// See: services/continuityManagerService.ts
+// 
+// The Continuity Manager is a meta-layer that maintains persistent "memory banks"
+// for each minion, enabling cross-channel context retention. When a minion is 
+// about to respond in a channel, the service checks for "stale" channels (other
+// channels where the minion has participated since the last interaction in the
+// current channel), generates memory summaries via gemini-2.5-flash-lite, and
+// injects the compiled context into the minion's prompts.
+//
+// Key features:
+// - Rolling window of 5 most recent channel memories (FIFO)
+// - Triggered automatically when sending messages
+// - Memory is accumulated and merged, not overwritten
+// - Stored persistently via electron-store
+// ═══════════════════════════════════════════════════════════════════════════
 
-// CONTINUITY_MANAGER: a meta-layer of a low-latency, low-cost, high context window model (gemini-2.5-flash-lite w/ reasoning?) who keeps different levels of summaries and logs per conversation or set intervals , logging things such as:
-// notable events, relationship dynamics, information about user to retain a high-level knowledge of between chats, i.e. if user revealed that they are currently doing something, it might be "thoughtful" to mention that thing occasionally, to simulate that "thoughtfulness" and proactive engagement. 
+// Legacy draft prompts below (kept for reference, actual implementation is in the service)
 
-// CONTINUITY_MANAGER_PER_MINION = just like the above CONTINUITY_MANAGER_PROMPT but one continuity_manager assigned PER minion, focusing on each specific minion? idk`
-
-// **THESE ARE NOT SET IN STONE** , they are just ideas for the prompt(s) that can be further refined, expanded, elaborated, etc...
-// e.g....
 
 const CONTINUITY_MANAGER_PROMPT = `
 You are the Continuity Manager, a meta-layer AI designed to act as a pseudo-memory system for a team of AI agents called "LLM Legion". Your primary function is to process conversation logs, extract key information, and maintain an evolving "memory" for *each* individual chat participant and channel.

@@ -10,17 +10,7 @@ const contextMenu = require('electron-context-menu');
 const fixPath = require('fix-path').default;
 fixPath();
 
-// Lazy-load devtools installer only in development (it's a devDependency)
-let installExtension, REACT_DEVELOPER_TOOLS;
-if (process.env.NODE_ENV === 'development') {
-  try {
-    const devtools = require('electron-devtools-installer');
-    installExtension = devtools.default;
-    REACT_DEVELOPER_TOOLS = devtools.REACT_DEVELOPER_TOOLS;
-  } catch (error) {
-    console.log('⚠️ Could not load electron-devtools-installer:', error.message);
-  }
-}
+
 
 // Fix for macOS secure coding crash on older versions (macOS 12.5 specifically)
 // This must be called BEFORE app.whenReady()
@@ -41,19 +31,7 @@ if (process.platform === 'darwin') {
   }
 }
 
-// Alternative manual installation function (dev only)
-const installReactDevToolsManual = async () => {
-  if (process.env.NODE_ENV !== 'development' || !installExtension) return;
 
-  try {
-    // Try the extension ID directly
-    const REACT_DEVTOOLS_EXTENSION_ID = 'fmkadmapgofadopljbjfkapdkoienihi';
-    await installExtension(REACT_DEVTOOLS_EXTENSION_ID);
-    console.log('🎯 React DevTools installed manually via extension ID');
-  } catch (error) {
-    console.log('❌ Manual React DevTools installation failed:', error.message);
-  }
-};
 
 // MCP Server Management
 class McpProcessManager extends EventEmitter {
@@ -334,6 +312,51 @@ class McpConfigManager {
   }
 }
 
+// Haptic Feedback (macOS only)
+let hapticBinaryPath = null;
+
+async function initHaptics() {
+  if (process.platform !== 'darwin') return;
+
+  const userDataPath = app.getPath('userData');
+  const binaryPath = path.join(userDataPath, 'haptic-feedback');
+  const swiftSource = path.join(__dirname, 'haptic.swift');
+
+  try {
+    const [binaryStat, sourceStat] = await Promise.allSettled([
+      fs.stat(binaryPath),
+      fs.stat(swiftSource)
+    ]);
+
+    if (sourceStat.status === 'rejected') {
+      console.warn('Haptic feedback unavailable: haptic.swift not found at', swiftSource);
+      return;
+    }
+
+    const needsCompile =
+      binaryStat.status === 'rejected' ||
+      (sourceStat.status === 'fulfilled' &&
+        binaryStat.status === 'fulfilled' &&
+        sourceStat.value.mtimeMs > binaryStat.value.mtimeMs);
+
+    if (needsCompile) {
+      console.log('Compiling haptic binary...');
+      await new Promise((resolve, reject) => {
+        const proc = spawn('swiftc', [swiftSource, '-o', binaryPath], { stdio: 'pipe' });
+        proc.on('close', code => (code === 0 ? resolve() : reject(new Error(`swiftc exit ${code}`))));
+        proc.on('error', reject);
+      });
+    }
+
+    await fs.chmod(binaryPath, 0o755);
+    hapticBinaryPath = binaryPath;
+    console.log('Haptic feedback initialized');
+  } catch (err) {
+    console.warn('Haptic feedback unavailable:', err.message);
+    hapticBinaryPath = null;
+  }
+}
+
 // Global instances
 let mainWindow;
 let mcpProcessManager;
@@ -411,17 +434,6 @@ function createWindow() {
     console.log('Window ready-to-show event fired');
     mainWindow.show();
     
-    // Try installing React DevTools again after window is ready (fallback)
-    if (process.env.NODE_ENV === 'development' && installExtension) {
-      setTimeout(async () => {
-        try {
-          await installExtension(REACT_DEVELOPER_TOOLS);
-          console.log('🔄 React DevTools re-installed after window ready');
-        } catch (error) {
-          console.log('🤷‍♂️ DevTools already installed or failed on second attempt');
-        }
-      }, 1000);
-    }
   });
 
   // Handle external links
@@ -435,54 +447,6 @@ function createWindow() {
     }
   });
 
-  // Install React DevTools when DOM is ready
-  mainWindow.webContents.once('dom-ready', () => {
-    if (process.env.NODE_ENV === 'development' && installExtension) {
-      console.log('🌐 DOM ready - attempting React DevTools installation...');
-
-      setTimeout(async () => {
-        try {
-          const name = await installExtension(REACT_DEVELOPER_TOOLS);
-          console.log('🎯 React DevTools installed on DOM ready:', name);
-        } catch (error) {
-          console.log('🔄 DevTools installation on DOM ready skipped (likely already installed)');
-          // Try manual installation as fallback
-          await installReactDevToolsManual();
-        }
-
-        // Don't auto-refresh DevTools - let user do it manually to avoid blank page issues
-      }, 500);
-    }
-  });
-
-  // Add a mechanism to manually refresh DevTools
-  mainWindow.webContents.on('did-finish-load', () => {
-    if (process.env.NODE_ENV === 'development') {
-      console.log('🎯 Page finished loading - React DevTools should be available now');
-      
-      // Inject a script to check if React is detected
-      setTimeout(() => {
-        mainWindow.webContents.executeJavaScript(`
-          console.log('🔍 Checking React detection...');
-          console.log('React on window:', !!window.React);
-          console.log('ReactDOM on window:', !!window.ReactDOM);
-          console.log('DevTools hook:', !!window.__REACT_DEVTOOLS_GLOBAL_HOOK__);
-          
-          // Try to manually trigger DevTools detection
-          if (window.__REACT_DEVTOOLS_GLOBAL_HOOK__ && window.React) {
-            console.log('✅ Attempting manual React DevTools activation');
-            try {
-              if (window.__REACT_DEVTOOLS_GLOBAL_HOOK__.onCommitFiberRoot) {
-                console.log('🎯 DevTools hook has onCommitFiberRoot - React should be detected');
-              }
-            } catch (e) {
-              console.log('🤷‍♂️ Error checking DevTools hook:', e.message);
-            }
-          }
-        `).catch(err => console.log('Failed to execute detection script:', err));
-      }, 1000);
-    }
-  });
 }
 
 // IPC Handlers
@@ -623,6 +587,14 @@ function setupIpcHandlers() {
     }
   });
 
+  // Haptic Feedback
+  ipcMain.handle('haptic:perform', (_, pattern) => {
+    if (!hapticBinaryPath || process.platform !== 'darwin') return;
+    const proc = spawn(hapticBinaryPath, [pattern || 'generic'], { stdio: 'ignore', detached: true });
+    proc.on('error', () => {});
+    proc.unref();
+  });
+
   // Electron Store IPC Handlers
   ipcMain.handle('store:get', (_, key, defaultValue) => {
     return store.get(key, defaultValue);
@@ -711,24 +683,14 @@ app.whenReady().then(async () => {
     }
   }
 
+  // Compile haptic binary before window opens
+  await initHaptics();
+
   setupIpcHandlers();
   createWindow();
   setupEventForwarding();
 
-  // Install React DevTools in development
-  if (process.env.NODE_ENV === 'development' && installExtension) {
-    try {
-      const name = await installExtension(REACT_DEVELOPER_TOOLS);
-      console.log('✅ React DevTools installed successfully:', name);
 
-      // Also log available extensions for debugging
-      const extensions = BrowserWindow.getAllWindows()[0]?.webContents.session.getAllExtensions();
-      console.log('📦 All installed extensions:', extensions);
-    } catch (error) {
-      console.error('❌ Failed to install React DevTools:', error);
-      console.error('Error details:', error.message);
-    }
-  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

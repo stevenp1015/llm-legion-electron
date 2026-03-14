@@ -36,6 +36,15 @@ interface LiteLLMUsage {
     total_tokens: number;
 }
 
+// Gemini safety settings to disable content filtering
+// These are passed through LiteLLM to the Gemini API
+const GEMINI_SAFETY_SETTINGS = [
+    { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+    { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+    { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+    { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
+];
+
 interface JsonApiResponse {
     data: PerceptionPlan | RegulatorReport | null;
     error?: string;
@@ -63,19 +72,25 @@ export const callLiteLLMApiForJson = async <T>(
   messages.push({ role: 'user', content: prompt });
 
   try {
+    const isGemini = model.toLowerCase().includes('gemini');
+    const requestBody: Record<string, any> = {
+        model: model,
+        messages: messages,
+        temperature: temperature,
+        response_format: { type: "json_object" },
+        stream: false,
+    };
+    if (isGemini) {
+        requestBody.safety_settings = GEMINI_SAFETY_SETTINGS;
+    }
+
     const response = await fetch(`${LITELLM_BASE_URL}/chat/completions`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${apiKey}`
         },
-        body: JSON.stringify({
-            model: model,
-            messages: messages,
-            temperature: temperature,
-            response_format: { type: "json_object" },
-            stream: false
-        }),
+        body: JSON.stringify(requestBody),
     });
 
     if (!response.ok) {
@@ -135,19 +150,25 @@ export const callLiteLLMAPIStream = async (
   messages.push({ role: 'user', content: prompt });
 
   try {
+    const isGemini = model.toLowerCase().includes('gemini');
+    const requestBody: Record<string, any> = {
+        model: model,
+        messages: messages,
+        temperature: temperature,
+        stream: true,
+        stream_options: { "include_usage": true },
+    };
+    if (isGemini) {
+        requestBody.safety_settings = GEMINI_SAFETY_SETTINGS;
+    }
+
     const response = await fetch(`${LITELLM_BASE_URL}/chat/completions`, {
         method: 'POST',
         headers: {
             'Authorization': `Bearer ${apiKey}`,
             'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-            model: model,
-            messages: messages,
-            temperature: temperature,
-            stream: true,
-            stream_options: { "include_usage": true } // Request usage data
-        }),
+        body: JSON.stringify(requestBody),
     });
 
     if (!response.ok || !response.body) {

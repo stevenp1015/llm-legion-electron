@@ -41,16 +41,18 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isSending, disable
     const target = textareaRef.current;
     setInputValue(target.value);
 
-    // Reset height to shrink if text is deleted
-    target.style.height = '36px';
-
-    // Calculate the new height
-    const minHeight = 36;
-    const maxHeight = 300; // Limit max height
-    const scrollHeight = target.scrollHeight;
-    const newHeight = Math.min(Math.max(scrollHeight, minHeight), maxHeight);
-
-    target.style.height = `${newHeight}px`;
+    // Defer the height calculation to a single rAF to avoid write-read-write layout thrashing.
+    // The old pattern (write height -> read scrollHeight -> write height) forced the browser
+    // to synchronously recalculate layout between each step on every keystroke.
+    requestAnimationFrame(() => {
+      if (!target) return;
+      target.style.height = '36px';
+      const minHeight = 36;
+      const maxHeight = 300;
+      const scrollHeight = target.scrollHeight;
+      const newHeight = Math.min(Math.max(scrollHeight, minHeight), maxHeight);
+      target.style.height = `${newHeight}px`;
+    });
   };
 
   useEffect(() => {
@@ -62,8 +64,9 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isSending, disable
 
 
   return (
-    <div className={`px-3 py-3 mx-auto justify-center bg-transparent border-t border-zinc-200 ${disabled ? 'opacity-50' : ''}`}> {/* Text Input Full Section */}
-      <div className="flex items-center gap-3 border border-slate-200 rounded-3xl w-[50rem] p-0 bg-transparent"> {/* Behind Text Input + Button */}
+    <div className={`px-3 py-3 mx-auto justify-center relative bg-transparent border-t border-zinc-200 ${disabled ? 'opacity-50' : ''}`}> {/* Text Input Full Section */}
+      <div className="flex items-center gap-3 border-1 border-blue-50 rounded-3xl w-[50rem] p-0 after:content-[''] after:flex after:h-[2px] after:bg-[linear-gradient(to_right,transparent_10%,#bbeeff77,#cceeffaa,#aaccffaa,transparent_95%)] after:absolute after:left-1/3 after:-translate-x-1/2 after:top-[11px] after:w-[45rem] before:content-[''] before:flex before:h-[1px] before:bg-[linear-gradient(to_right,transparent_10%,#aaccff33_20%,#ffffff,#ff00ffaa_50%,#ffffff,transparent_90%)] before:absolute before:left-1/3 before:-translate-x-1/2 before:top-[11px] hover:before:-translate-x-1/4 before:transition-transform before:duration-1000 before:w-[45rem] bg-transparent">
+          {/* Behind Text Input + Button */}
         <textarea
           ref={textareaRef}
           value={inputValue}
@@ -73,7 +76,7 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isSending, disable
           className="chat-input-textarea 
           flex-grow
           max-w-3xl
-          p-4
+          py-3 px-4
           bg-zinc-100 
           text-black 
           text-sm 
@@ -87,8 +90,9 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isSending, disable
           max-h-36
           min-h-12
           shadow-lg
-          content-center
+          self-baseline
           overflow-y-hidden
+
           scrollbar-thin 
           scrollbar-thumb-neutral-400/0 
           scrollbar-track-zinc-200/0"

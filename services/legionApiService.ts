@@ -18,6 +18,7 @@ import {
 } from '../constants';
 import { callLiteLLMAPIStream, callLiteLLMApiForJson } from './geminiService';
 import { mcpElectronService } from './mcpElectronService';
+import { continuityManagerService } from './continuityManagerService';
 
 
 // @ts-nocheck
@@ -109,7 +110,7 @@ class LegionApiService {
   private modelQuotas: Record<string, ModelQuotas>;
   private apiKeyRoundRobinIndex = 0;
   private sharedPoolUsage: Record<string, { requests: UsageStat[] }> = {};
-  private isInitialized = false;
+  isInitialized = false;
 
   constructor() {
     // Initialize with empty data, will be populated by async init
@@ -455,16 +456,33 @@ class LegionApiService {
     const { channelId, triggeringMessage: userMessage, ...callbacks } = params;
     
     if (!this.messages[channelId]) this.messages[channelId] = [];
-    this.messages[channelId].push(userMessage);
     
     const channel = this.channels.find(c => c.id === channelId);
     if (!channel) return;
-    
-    channel.messageCounter = (channel.messageCounter || 0) + 1;
 
     const minionsInChannel = this.minionConfigs.filter(minion => 
       channel.members.includes(minion.name) && minion.role === 'standard'
     );
+    
+    // ═══════════════════════════════════════════════════════════════════════
+    // CONTINUITY MANAGER: Update memory banks BEFORE adding the new message
+    // This ensures stale detection is based on the state before this message
+    // ═══════════════════════════════════════════════════════════════════════
+    try {
+      await continuityManagerService.prepareMinionsForChannel(
+        channelId,
+        minionsInChannel,
+        this.channels,
+        this.messages
+      );
+    } catch (error) {
+      console.error('[LegionAPI] Continuity manager error (non-blocking):', error);
+    }
+    // ═══════════════════════════════════════════════════════════════════════
+    
+    // NOW add the user message after stale detection
+    this.messages[channelId].push(userMessage);
+    channel.messageCounter = (channel.messageCounter || 0) + 1;
 
     if (minionsInChannel.length === 0 && userMessage.senderType === MessageSender.User) {
        await this._checkForRegulatorAction(channel, callbacks.onRegulatorReport, callbacks.onSystemMessage);
@@ -507,7 +525,16 @@ class LegionApiService {
     // Use minion-specific dynamic history if provided, otherwise generate filtered history
     const chatHistory = dynamicHistoryForMinion || formatChatHistoryForLLM(this.messages[channelId] || [], channelId, 50, minion.name);
 
-    const prompt = PERCEPTION_AND_PLANNING_PROMPT_TEMPLATE( minion.name, minion.system_prompt_persona, JSON.stringify(minion.lastDiaryState || {}), JSON.stringify(minion.opinionScores, null, 2), chatHistory, lastSenderName, channelType, availableTools );
+    // ═══════════════════════════════════════════════════════════════════════
+    // CONTINUITY MANAGER: Inject cross-channel memory context into persona
+    // ═══════════════════════════════════════════════════════════════════════
+    const memoryContext = continuityManagerService.getCompiledContextForMinion(minion.id);
+    const enrichedPersona = memoryContext 
+      ? `${minion.system_prompt_persona}\n\n${memoryContext}`
+      : minion.system_prompt_persona;
+    // ═══════════════════════════════════════════════════════════════════════
+
+    const prompt = PERCEPTION_AND_PLANNING_PROMPT_TEMPLATE( minion.name, enrichedPersona, JSON.stringify(minion.lastDiaryState || {}), JSON.stringify(minion.opinionScores, null, 2), chatHistory, lastSenderName, channelType, availableTools );
     const { data: plan, error, usage } = await callLiteLLMApiForJson<PerceptionPlan>(prompt, minion.model_id, minion.params.temperature, keyInfo.key);
     if (usage) this._updateUsage(minion.id, usage);
     return { minion, plan, error };
@@ -553,6 +580,21 @@ class LegionApiService {
       this.saveChannels(); // Save potential message counter changes
       return;
     }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // CONTINUITY MANAGER: Update memory banks for auto-chat turns too
+    // ═══════════════════════════════════════════════════════════════════════
+    try {
+      await continuityManagerService.prepareMinionsForChannel(
+        channelId,
+        minionsInChannel,
+        this.channels,
+        this.messages
+      );
+    } catch (error) {
+      console.error('[LegionAPI] Continuity manager error in auto-chat (non-blocking):', error);
+    }
+    // ═══════════════════════════════════════════════════════════════════════
 
     const initialChatHistory = formatChatHistoryForLLM(currentMessages, channelId);
     

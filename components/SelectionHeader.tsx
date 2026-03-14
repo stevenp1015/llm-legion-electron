@@ -75,4 +75,4 @@ const SelectionHeader: React.FC<SelectionHeaderProps> = ({
   );
 };
 
-export default SelectionHeader;
+export default React.memo(SelectionHeader);
