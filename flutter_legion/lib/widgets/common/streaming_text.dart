@@ -5,6 +5,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:markdown/markdown.dart' as md;
@@ -76,8 +77,25 @@ class StreamingText extends StatelessWidget {
       selectable: true,
       styleSheet: _buildMarkdownStyleSheet(context, textStyle),
       extensionSet: md.ExtensionSet.gitHubFlavored,
-      onTapLink: (text, href, title) {
-        // TODO: Handle link taps
+      onTapLink: (text, href, title) async {
+        final messenger = ScaffoldMessenger.maybeOf(context);
+        final target = href?.trim();
+
+        if (target == null || target.isEmpty) {
+          messenger?.showSnackBar(
+            const SnackBar(content: Text('Unable to open link: missing URL.')),
+          );
+          return;
+        }
+
+        await Clipboard.setData(ClipboardData(text: target));
+
+        messenger?.showSnackBar(
+          SnackBar(
+            content: Text('Link copied to clipboard: $target'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
       },
     );
   }

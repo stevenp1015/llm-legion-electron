@@ -8,6 +8,8 @@ import '../models/chat_message.dart';
 import '../models/channel.dart';
 import '../widgets/chat/chat_message_widget.dart';
 import '../widgets/chat/chat_input_widget.dart';
+import 'analytics_dashboard_screen.dart';
+import 'mcp_manager_screen.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -80,8 +82,6 @@ class _MainScreenState extends State<MainScreen> {
     if (_currentChannelId == null) return;
     
     final chatProvider = context.read<ChatProvider>();
-    final appProvider = context.read<AppProvider>();
-    
     // Create and add user message
     final userMessage = chatProvider.createUserMessage(
       _currentChannelId!,
@@ -288,7 +288,7 @@ class _MainScreenState extends State<MainScreen> {
               ),
               IconButton(
                 onPressed: () {
-                  // TODO: Open analytics
+                  AnalyticsDashboardScreen.show(context);
                 },
                 icon: Icon(
                   Icons.analytics,
@@ -298,7 +298,7 @@ class _MainScreenState extends State<MainScreen> {
               ),
               IconButton(
                 onPressed: () {
-                  // TODO: Open MCP manager
+                  McpManagerScreen.show(context);
                 },
                 icon: Icon(
                   Icons.settings,
@@ -436,8 +436,16 @@ class _MainScreenState extends State<MainScreen> {
           isSelected: chatProvider.selectedMessageIds.contains(message.id),
           isBulkDiaryVisible: chatProvider.bulkDiaryVisible.contains(message.id),
           onEnterSelectionMode: () => chatProvider.toggleSelectionMode(),
-          onToggleSelection: (shiftKey) => {
-            // TODO: Implement selection logic
+          onToggleSelection: (shiftKey) {
+            if (shiftKey && chatProvider.lastSelectedMessageId != null) {
+              chatProvider.selectMessageRange(
+                chatProvider.lastSelectedMessageId!,
+                message.id,
+                messages,
+              );
+            } else {
+              chatProvider.selectMessage(message.id);
+            }
           },
           onDelete: () async {
             await _legionService.deleteMessage(message.channelId, message.id);

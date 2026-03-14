@@ -166,8 +166,10 @@ class ChatProvider extends ChangeNotifier {
     _isSelectionMode = !_isSelectionMode;
     if (!_isSelectionMode) {
       clearSelection();
+      return;
     }
-    // Selection management
+
+    notifyListeners();
   }
 
   void selectMessage(String messageId) {
@@ -262,6 +264,22 @@ class ChatProvider extends ChangeNotifier {
       _bulkDiaryVisible.addAll(messageIds);
     }
     notifyListeners();
+  }
+
+
+  ChatMessage createUserMessage(
+    String channelId,
+    String content,
+    String senderName,
+  ) {
+    return ChatMessage(
+      id: 'user-${DateTime.now().millisecondsSinceEpoch}',
+      channelId: channelId,
+      senderType: MessageSender.user,
+      senderName: senderName,
+      content: content,
+      timestamp: DateTime.now().millisecondsSinceEpoch,
+    );
   }
 
   // User message creation helper
