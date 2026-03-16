@@ -100,7 +100,7 @@ class _EnhancedChatMessageState extends State<EnhancedChatMessage> {
     }
   }
 
-  // Handle avatar click to enter selection mode
+  // Handle avatar click to enter selection mode // this DOESNT WORK reliably
   void _handleAvatarClick() {
     if (!widget.isSelectionMode && widget.onEnterSelectionMode != null) {
       widget.onEnterSelectionMode!();
@@ -222,17 +222,17 @@ class _EnhancedChatMessageState extends State<EnhancedChatMessage> {
 
   Widget _buildTypingMessage(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           // Avatar with typing animation
           TypingMinionAvatar(
             name: widget.message.senderName,
-            size: 32,
+            size: 16,
           ),
           
-          const SizedBox(width: 12),
+          const SizedBox(width: 8),
           
           // Typing bubble
           TypingMessageBubble(
@@ -259,14 +259,14 @@ class _EnhancedChatMessageState extends State<EnhancedChatMessage> {
                 : 0.0,
           ),
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               // Left avatar (minions)
               if (!_isUser) _buildAvatar(),
               
-              if (!_isUser) const SizedBox(width: 12),
+              if (!_isUser) const SizedBox(width: 8),
               
               // Message content
               Expanded(
@@ -312,16 +312,17 @@ class _EnhancedChatMessageState extends State<EnhancedChatMessage> {
   Widget _buildAvatar() {
     if (_isUser) {
       return UserAvatar(
-        size: 32,
+        size: 20,
         isSelectable: true,
         isSelected: widget.isSelected,
         showSelectionIndicator: widget.isSelectionMode,
+
         onTap: _handleAvatarClick,
       );
     } else {
       return MinionAvatar(
         name: widget.message.senderName,
-        size: 32,
+        size: 20,
         isSelectable: true,
         isSelected: widget.isSelected,
         showSelectionIndicator: widget.isSelectionMode,
@@ -412,7 +413,7 @@ class _EnhancedChatMessageState extends State<EnhancedChatMessage> {
                   BoxShadow(
                     color: theme.colorScheme.primary.withValues(alpha: 0.3),
                     blurRadius: 12,
-                    spreadRadius: 2,
+                    spreadRadius: 3,
                   ),
                 ]
               : [
@@ -509,7 +510,7 @@ class _EnhancedChatMessageState extends State<EnhancedChatMessage> {
                     widget.message.senderName,
                     style: theme.textTheme.labelMedium?.copyWith(
                       color: textColor ?? theme.colorScheme.onSurface,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                   if (widget.message.senderRole != null) ...[
@@ -524,7 +525,7 @@ class _EnhancedChatMessageState extends State<EnhancedChatMessage> {
                         widget.message.senderRole!,
                         style: theme.textTheme.labelSmall?.copyWith(
                           color: textColor ?? theme.colorScheme.primary,
-                          fontSize: 10,
+                          fontSize: 9,
                         ),
                       ),
                     ),
@@ -565,7 +566,7 @@ class _EnhancedChatMessageState extends State<EnhancedChatMessage> {
                   value: 'edit',
                   child: Row(
                     children: [
-                      Icon(Icons.edit, size: 16),
+                      Icon(Icons.edit, size: 12),
                       SizedBox(width: 8),
                       Text('Edit'),
                     ],
@@ -575,7 +576,7 @@ class _EnhancedChatMessageState extends State<EnhancedChatMessage> {
                   value: 'delete',
                   child: Row(
                     children: [
-                      Icon(Icons.delete, size: 16),
+                      Icon(Icons.delete, size: 12),
                       SizedBox(width: 8),
                       Text('Delete'),
                     ],
@@ -584,7 +585,7 @@ class _EnhancedChatMessageState extends State<EnhancedChatMessage> {
               ],
               child: Icon(
                 Icons.more_vert,
-                size: 16,
+                size: 12,
                 color:
                     (textColor ?? theme.colorScheme.onSurface).withValues(alpha: 0.5),
               ),
@@ -622,7 +623,7 @@ class _EnhancedChatMessageState extends State<EnhancedChatMessage> {
           children: [
             TextButton.icon(
               onPressed: _handleCancelEdit,
-              icon: const Icon(Icons.close, size: 16),
+              icon: const Icon(Icons.close, size: 12),
               label: const Text('Cancel'),
               style: TextButton.styleFrom(
                 foregroundColor: Colors.white.withValues(alpha: 0.8),
@@ -633,7 +634,7 @@ class _EnhancedChatMessageState extends State<EnhancedChatMessage> {
             
             ElevatedButton.icon(
               onPressed: _handleSaveEdit,
-              icon: const Icon(Icons.save, size: 16),
+              icon: const Icon(Icons.save, size: 12),
               label: const Text('Save'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.white.withValues(alpha: 0.2),
@@ -706,7 +707,7 @@ class _EnhancedChatMessageState extends State<EnhancedChatMessage> {
     final theme = Theme.of(context);
     
     if (_isUser) {
-      return const Color.fromARGB(255, 77, 163, 255); // Amber for user
+      return const Color.fromARGB(255, 77, 163, 255);
     }
     
     if (_isMinion && widget.minionConfig?.chatColor != null) {

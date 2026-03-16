@@ -45,21 +45,21 @@ class VistaGlass extends StatelessWidget {
         ),
         child: Container(
           decoration: BoxDecoration(
-            color: effectiveTintColor.withOpacity(opacity),
+            color: effectiveTintColor.withValues(alpha: opacity),
             borderRadius: effectiveBorderRadius,
             border: border ?? Border.all(
-              color: Colors.white.withOpacity(0.3),
+              color: Colors.white.withValues(alpha: 0.3),
               width: 1,
             ),
             boxShadow: shadows ?? [
               BoxShadow(
-                color: Colors.black.withOpacity(0.1),
+                color: Colors.black.withValues(alpha: 0.9),
                 blurRadius: 20,
                 spreadRadius: 2,
                 offset: const Offset(0, 4),
               ),
               BoxShadow(
-                color: Colors.white.withOpacity(0.1),
+                color: Colors.white.withValues(alpha: 0.9),
                 blurRadius: 1,
                 spreadRadius: 1,
                 offset: const Offset(0, -1),
@@ -69,9 +69,9 @@ class VistaGlass extends StatelessWidget {
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                Colors.white.withOpacity(0.2),
-                Colors.white.withOpacity(0.05),
-                Colors.black.withOpacity(0.05),
+                Colors.white.withValues(alpha: 0.2),
+                Colors.white.withValues(alpha: 0.05),
+                Colors.black.withValues(alpha: 0.05),
               ],
               stops: const [0.0, 0.5, 1.0],
             ),

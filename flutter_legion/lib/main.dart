@@ -38,7 +38,7 @@ void main() async {
       // On macOS, make the title bar transparent
       if (defaultTargetPlatform == TargetPlatform.macOS) {
         await windowManager
-            .setHasShadow(false); // Optional: remove window shadow
+            .setHasShadow(true); // Optional: remove window shadow
       }
     });
   }
@@ -96,8 +96,14 @@ class LegionApp extends StatelessWidget {
       child: MacosApp(
         title: 'Legion Command Center',
         debugShowCheckedModeBanner: false,
-        theme: MacosThemeData(
+        darkTheme: MacosThemeData(
           brightness: Brightness.dark,
+          primaryColor: const Color(0xFF5AC8FA),
+          canvasColor: const Color(0xFFFFAAFF),
+          iconTheme: const MacosIconThemeData(color: Color(0xFF5AC8FA)),
+        ),
+        theme: MacosThemeData(
+          brightness: Brightness.light,
           primaryColor: const Color(0xFF5AC8FA),
           iconTheme: const MacosIconThemeData(color: Color(0xFF5AC8FA)),
         ),
@@ -112,7 +118,7 @@ class LegionApp extends StatelessWidget {
             colorScheme: colorScheme,
             brightness: macosTheme.brightness,
             scaffoldBackgroundColor: macosTheme.canvasColor,
-            textTheme: GoogleFonts.interTextTheme(
+            textTheme: GoogleFonts.quicksandTextTheme(
               macosTheme.brightness == Brightness.dark
                   ? baseDark.textTheme
                   : baseLight.textTheme,
