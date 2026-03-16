@@ -168,7 +168,7 @@ class StaggeredAnimations {
       
       return child.animate(delay: startDelay + (itemDelay * index))
           .fadeIn(duration: SpringConfig.gentleDuration, curve: SpringConfig.gentle)
-          .moveY(begin: 10, duration: SpringConfig.gentleDuration, curve: SpringConfig.gentle);
+          .moveY(begin: 20, duration: SpringConfig.gentleDuration, curve: SpringConfig.gentle);
     }).toList();
   }
 }

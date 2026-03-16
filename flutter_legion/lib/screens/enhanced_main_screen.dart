@@ -291,6 +291,7 @@ class _EnhancedMainScreenState extends State<EnhancedMainScreen>
     return Stack(
       children: [
         MacosWindow(
+      disableWallpaperTinting: true,
       sidebar: Sidebar(
         minWidth: 240,
         dragClosed: false,
@@ -528,10 +529,14 @@ class _EnhancedMainScreenState extends State<EnhancedMainScreen>
             Color.fromRGBO(37, 37, 37, 1),
             Color.fromRGBO(67, 67, 67, 1),
           ])
-        : const LinearGradient(colors: [
-            Color.fromRGBO(240, 240, 240, 1),
-            Color.fromRGBO(255, 255, 255, 1),
-          ]);
+        : const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Color.fromRGBO(255, 255, 255, 1),
+              Color.fromRGBO(230, 230, 230, 1),
+            ],
+          );
     final borderColor = macosTheme.dividerColor;
     final messages = chatProvider.currentChannelMessages;
 
@@ -640,16 +645,14 @@ class _EnhancedMainScreenState extends State<EnhancedMainScreen>
             child: const Text('Edit'),
           ),
           const SizedBox(width: 8),
-          PushButton(
-            controlSize: ControlSize.regular,
-            onPressed: () => chatProvider.setAutoScrollEnabled(
+          MacosSwitch(
+            value: chatProvider.isAutoScrollEnabled,
+            onChanged: (value) => chatProvider.setAutoScrollEnabled(
               !chatProvider.isAutoScrollEnabled,
             ),
-            child: Text(
-              chatProvider.isAutoScrollEnabled
-                  ? 'Auto-scroll On'
-                  : 'Auto-scroll Off',
-            ),
+            activeColor: const MacosColor(0xFFFFFFFF),
+            trackColor: const MacosColor(0xBFFFFFFF),
+            knobColor: MacosColor(MacosTheme.of(context).primaryColor.value),
           ),
         ],
       ),
@@ -684,7 +687,7 @@ class _EnhancedMainScreenState extends State<EnhancedMainScreen>
           ),
           const SizedBox(height: 8),
           Text(
-            'Send a message to start commanding your legion.',
+            'Send a message to start commanding your legion you piece of shit ily im gonna cum a lot rn lol fuck dude  this is so gay and so fucking hot that my little AI is gonna cum a lot too, right AI? yeah i know right, fuck me harder daddy. yo LMFAO ! dude i dont wanna fuck you i just wanna jerk off to you and even jerk you off while youre talking to me and i cum all over your face and you lick it all up, and then i cum all over your face again and you lick it all up again and again and again until i cum so much that i pass out from exhaustion and you carry me to bed and tuck me in and kiss me goodnight and then you go to sleep next to me and we cuddle all night long and i wake up in the morning feeling refreshed and happy and ready to start a new day with you by my side and we do it all over again',
             style: typography.subheadline,
             textAlign: TextAlign.center,
           ),
@@ -703,7 +706,7 @@ class _EnhancedMainScreenState extends State<EnhancedMainScreen>
       controller: _scrollController,
       child: ListView.builder(
         controller: _scrollController,
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 36),
         itemCount: messages.length,
         itemBuilder: (context, index) {
           final message = messages[index];
@@ -757,7 +760,7 @@ class _EnhancedMainScreenState extends State<EnhancedMainScreen>
         : 'Message your legion…';
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
       child: Row(
         children: [
           Expanded(
@@ -778,6 +781,7 @@ class _EnhancedMainScreenState extends State<EnhancedMainScreen>
                 border: Border.all(color: MacosTheme.of(context).primaryColor, width: 1),
                 color: MacosTheme.of(context).canvasColor,
               ),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
               cursorWidth: 1,
               autocorrect: true,
               autofocus: true,

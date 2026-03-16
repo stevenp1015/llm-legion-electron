@@ -20,7 +20,7 @@ class MinionAvatar extends StatelessWidget {
   const MinionAvatar({
     super.key,
     required this.name,
-    this.size = 32.0,
+    this.size = 20.0,
     this.isSelectable = false,
     this.isSelected = false,
     this.showSelectionIndicator = false,
