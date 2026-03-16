@@ -687,7 +687,7 @@ class _EnhancedMainScreenState extends State<EnhancedMainScreen>
           ),
           const SizedBox(height: 8),
           Text(
-            'Send a message to start commanding your legion you piece of shit ily im gonna cum a lot rn lol fuck dude  this is so gay and so fucking hot that my little AI is gonna cum a lot too, right AI? yeah i know right, fuck me harder daddy. yo LMFAO ! dude i dont wanna fuck you i just wanna jerk off to you and even jerk you off while youre talking to me and i cum all over your face and you lick it all up, and then i cum all over your face again and you lick it all up again and again and again until i cum so much that i pass out from exhaustion and you carry me to bed and tuck me in and kiss me goodnight and then you go to sleep next to me and we cuddle all night long and i wake up in the morning feeling refreshed and happy and ready to start a new day with you by my side and we do it all over again',
+            'Send a message to start commanding your legion.',
             style: typography.subheadline,
             textAlign: TextAlign.center,
           ),
